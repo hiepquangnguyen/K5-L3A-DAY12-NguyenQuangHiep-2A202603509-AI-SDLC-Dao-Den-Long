@@ -1,4 +1,4 @@
-"""Configuration and Test Contract v1.1 loader for Đảo Đèn Lồng."""
+"""Configuration and Test Contract v1.2 loader for Đảo Đèn Lồng."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ CONTRACT_PATH = ROOT_DIR / "game.contract.json"
 
 TICK_RATE = 60
 DT = 1.0 / TICK_RATE
+FUEL_SCALE = 60
 
 JUMP_SPEED = 7.0
 GRAVITY = 20.0
@@ -23,7 +24,7 @@ NIGHT_DURATION_KEYS: dict[int, str] = {
 }
 
 VALID_SHADE_STATES: frozenset[str] = frozenset(
-    {"spawning", "wander", "chase", "recoil", "stunned"}
+    {"spawning", "wander", "chase", "drain", "recoil", "stunned"}
 )
 VALID_DRIFTER_STATES: frozenset[str] = frozenset(
     {"idle", "chase", "flee", "removed"}

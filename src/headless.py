@@ -1,4 +1,4 @@
-"""Test Contract v1.1 headless CLI runner for Đảo Đèn Lồng (Nights 1, 2, 3)."""
+"""Test Contract v1.2 headless CLI runner for Đảo Đèn Lồng (Nights 1, 2, 3)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from src.sim.validation import ContractFormatError, parse_inputs_file, parse_sce
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Headless Test Contract v1.1 runner")
+    parser = argparse.ArgumentParser(description="Headless Test Contract v1.2 runner")
     parser.add_argument("--seed", type=int, required=True, help="Deterministic PRNG seed")
     parser.add_argument("--night", type=int, required=True, help="Night number (1, 2, or 3)")
     parser.add_argument("--scenario", type=Path, default=None, help="Optional scenario JSON path")

@@ -1,4 +1,4 @@
-"""Strict validation for Test Contract v1.1 --inputs and --scenario JSON files."""
+"""Strict validation for Test Contract v1.2 --inputs and --scenario JSON files."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from src.sim.config import VALID_DRIFTER_STATES, VALID_SHADE_STATES
 
 
 class ContractFormatError(ValueError):
-    """Raised when an inputs or scenario file violates Test Contract v1.1 (exit code 2)."""
+    """Raised when an inputs or scenario file violates Test Contract v1.2 (exit code 2)."""
 
 
 def _is_int(value: object) -> bool:
@@ -103,6 +103,7 @@ def _parse_scenario_player(player: object) -> dict:
         "dash_cd_ticks",
         "pulse_cd_ticks",
         "charm_ticks",
+        "successful_lights",
     ):
         if int_field in player:
             if not _is_int(player[int_field]) or player[int_field] < 0:
@@ -148,7 +149,7 @@ def _parse_scenario_motes(motes: object) -> list[dict]:
     return parsed
 
 
-def _parse_scenario_shades(shades: object) -> list[dict]:
+def _parse_scenario_shades(shades: object, valid_lantern_ids: set[str] | None = None) -> list[dict]:
     if not isinstance(shades, list):
         raise ContractFormatError("scenario.shades must be an array")
     parsed: list[dict] = []
@@ -172,6 +173,17 @@ def _parse_scenario_shades(shades: object) -> list[dict]:
                     f"scenario.shades[{idx}].state_ticks_left must be a non-negative integer"
                 )
             entry["state_ticks_left"] = int(item["state_ticks_left"])
+        if "target_lantern_id" in item and item["target_lantern_id"] is not None:
+            tlid = item["target_lantern_id"]
+            if not isinstance(tlid, str) or (
+                valid_lantern_ids is not None and tlid not in valid_lantern_ids
+            ):
+                raise ContractFormatError(
+                    f"scenario.shades[{idx}].target_lantern_id must be a valid lantern id or null"
+                )
+            entry["target_lantern_id"] = tlid
+        elif "target_lantern_id" in item:
+            entry["target_lantern_id"] = None
         parsed.append(entry)
     return parsed
 
@@ -260,12 +272,22 @@ def _parse_scenario_lanterns(lanterns: object, valid_lantern_ids: set[str]) -> l
             if not isinstance(item["lit"], bool):
                 raise ContractFormatError(f"scenario.lanterns[{idx}].lit must be a boolean")
             entry["lit"] = item["lit"]
+        if "ever_lit" in item:
+            if not isinstance(item["ever_lit"], bool):
+                raise ContractFormatError(f"scenario.lanterns[{idx}].ever_lit must be a boolean")
+            entry["ever_lit"] = item["ever_lit"]
+        if "fuel" in item:
+            if not _is_num(item["fuel"]) or not (0.0 <= float(item["fuel"]) <= 100.0):
+                raise ContractFormatError(
+                    f"scenario.lanterns[{idx}].fuel must be a finite number within [0, 100]"
+                )
+            entry["fuel"] = float(item["fuel"])
         parsed.append(entry)
     return parsed
 
 
 def parse_scenario_file(path: Path, valid_lantern_ids: set[str]) -> dict:
-    """Validate and normalize a Test Contract v1.1 scenario JSON file."""
+    """Validate and normalize a Test Contract v1.2 scenario JSON file."""
     data = _load_json(path, "scenario")
     if not isinstance(data, dict):
         raise ContractFormatError("Scenario root must be a JSON object")
@@ -281,7 +303,7 @@ def parse_scenario_file(path: Path, valid_lantern_ids: set[str]) -> dict:
     if "motes" in data:
         parsed["motes"] = _parse_scenario_motes(data["motes"])
     if "shades" in data:
-        parsed["shades"] = _parse_scenario_shades(data["shades"])
+        parsed["shades"] = _parse_scenario_shades(data["shades"], valid_lantern_ids)
     if "drifters" in data:
         parsed["drifters"] = _parse_scenario_drifters(data["drifters"])
     if "charms" in data:
