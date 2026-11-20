@@ -46,7 +46,7 @@ All notable changes and Contract migrations for **Đảo Đèn Lồng** are docu
    - Scenario JSON validation: accepts `lanterns[].lit`, `lanterns[].fuel` (defaults to `100.0` if `lit: true` and omitted), `lanterns[].ever_lit`; `player.successful_lights`; `shades[].target_lantern_id` and state `"drain"`.
 
 7. **Test Suite Migrations (Rationale for Modified Phase 1–2 Tests)**
-   - `tests/test_phase2_features.py`: Updated `contract_version == "1.2"`, night durations (`240/270/300s`), `night3` dawn duration (`18,000` ticks) plus added an explicit `21,600`-tick `<= 30s` stress test via scenario `time_left_s: 360.0`; updated Shade stun-recovery assertion from `chase` to `wander` per Ticket-03.
+   - `tests/test_phase2_features.py`: Updated `test_night3_dawn_18000_and_stress_21600_ticks_under_30s_and_deterministic` for `night3` dawn at `18,000` ticks (`300s`) while retaining a `21,600`-tick `<= 30s` stress test via scenario `time_left_s: 360.0`; updated same-tick outcome precedence assertion (`all_lit` -> `dawn_survived` plus `no_flames > dawn_survived` check). Contract v1.2 tuning/durations and Shade stun-recovery (`stunned -> wander`) assertions are verified in `tests/test_phase3_change_request.py`.
    - `tests/test_headless_contract.py` & `tests/test_sim_unit.py`: Migrated tests that asserted `all_lit` early win, old `+10/mote` score, or old `per_second_left` time bonus to assert v1.2 `lantern_lit.relight == False`, non-termination on lighting all lanterns, and `dawn_survived` / `dawn` / `no_flames` rules. Zero tests were silently skipped or weakened.
 
 ### Added (Non-Breaking Features)

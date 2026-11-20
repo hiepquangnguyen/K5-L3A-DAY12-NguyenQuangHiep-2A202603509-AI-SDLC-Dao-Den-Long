@@ -1,5 +1,5 @@
 $ C:\Users\hiepq\AppData\Local\Programs\Python\Python313\python.exe -m unittest discover -s tests -v
-exit_code: 0 (elapsed: 34.28s)
+exit_code: 0 (elapsed: 21.72s)
 --- stdout ---
 
 --- stderr ---
@@ -40,6 +40,6 @@ test_safe_radius_blocks_active_shades_only_for_lit_lanterns (test_sim_unit.TestG
 test_scenario_setup_emits_no_events_or_score (test_sim_unit.TestGameSimUnit.test_scenario_setup_emits_no_events_or_score) ... ok
 
 ----------------------------------------------------------------------
-Ran 35 tests in 34.024s
+Ran 35 tests in 21.528s
 
 OK

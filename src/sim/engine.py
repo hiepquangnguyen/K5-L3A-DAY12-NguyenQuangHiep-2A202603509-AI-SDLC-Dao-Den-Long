@@ -1743,6 +1743,7 @@ class GameSim:
         snap["win_threshold"] = self.win_threshold
         snap["successful_lights"] = self.successful_lights
         snap["game_over_reason"] = self.game_over_reason
+        snap["lantern_fuel_60"] = {lantern.id: lantern.fuel_60 for lantern in self.lanterns}
         snap["charm_positions"] = {
             charm.id: [r3(charm.x), r3(charm.y), r3(charm.z)] for charm in self.charms
         }

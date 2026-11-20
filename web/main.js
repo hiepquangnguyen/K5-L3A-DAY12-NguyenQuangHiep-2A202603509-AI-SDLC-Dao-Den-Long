@@ -58,10 +58,12 @@ function applyColorblindSetting() {
   document.body.classList.toggle('colorblind', Boolean(settings.colorblind));
   const auraHex = getShadeAuraHex();
   for (const vis of shadeObjects.values()) {
-    vis.eyeMat.color.setHex(auraHex);
     if (vis.state !== 'stunned') {
+      vis.eyeMat.color.setHex(auraHex);
       vis.bodyMat.emissive.setHex(auraHex);
       vis.drainRingMat.color.setHex(auraHex);
+    } else {
+      vis.eyeMat.color.setHex(PALETTE.shadeStun);
     }
   }
   for (const vis of lanternObjects.values()) {
@@ -573,16 +575,16 @@ function createLanternVisual(lData, lanternCost, safeRadius) {
   housing.position.y = 3.2;
   group.add(housing);
 
-  // Non-color distinction for unlit/collapsed lanterns: jagged tear strips on paper lantern
+  // Non-color distinction for unlit/collapsed lanterns: jagged tear strips flush on paper lantern
   const tearGroup = new THREE.Group();
   tearGroup.position.y = 3.2;
   const tearMat = new THREE.MeshBasicMaterial({ color: 0x0e1430, side: THREE.DoubleSide });
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + 0.35;
-    const flap = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.56), tearMat);
-    flap.position.set(Math.cos(a) * 0.63, (i % 2 === 0 ? 0.06 : -0.1), Math.sin(a) * 0.63);
+    const flap = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.34), tearMat);
+    flap.position.set(Math.cos(a) * 0.665, i % 2 === 0 ? 0.05 : -0.06, Math.sin(a) * 0.665);
     flap.rotation.y = Math.atan2(Math.cos(a), Math.sin(a));
-    flap.rotation.z = i % 2 === 0 ? 0.28 : -0.32;
+    flap.rotation.z = i % 2 === 0 ? 0.25 : -0.28;
     tearGroup.add(flap);
   }
   group.add(tearGroup);
@@ -1456,11 +1458,15 @@ function syncVisualsFromState(st) {
     elPulseCd.className = 'skill-state ready';
   }
 
-  // Context prompt near eligible lantern (radius 2.0m: unlit, or lit & fuel < fuel_max)
+  // Context prompt near eligible lantern (radius 2.0m: unlit, or lit & exact fuel_60 < fuelMax*60)
+  const fuelMax60 = fuelMax * 60;
+  const fuelPerMote60 = (tuning.fuel_per_mote || 10) * 60;
+  const fuel60Map = st.lantern_fuel_60 || {};
   let nearTarget = null;
   let nearDist = Infinity;
   for (const lData of st.lanterns) {
-    if (lData.lit && lData.fuel >= fuelMax - 1e-6) continue;
+    const curFuel60 = typeof fuel60Map[lData.id] === 'number' ? fuel60Map[lData.id] : Math.round(lData.fuel * 60);
+    if (lData.lit && curFuel60 >= fuelMax60) continue;
     const d = Math.hypot(st.player.pos[0] - lData.pos[0], st.player.pos[2] - lData.pos[2]);
     if (d <= tuning.interact_radius && (d < nearDist || (d === nearDist && nearTarget && lData.id < nearTarget.id))) {
       nearTarget = lData;
@@ -1473,7 +1479,8 @@ function syncVisualsFromState(st) {
       const act = nearTarget.ever_lit ? 'Thắp lại' : 'Thắp đèn';
       elPrompt.textContent = `E — ${act} ${nearTarget.id} (${nearTarget.deposited}/${req})`;
     } else {
-      const needMotes = Math.ceil((fuelMax - nearTarget.fuel) / (tuning.fuel_per_mote || 10));
+      const curFuel60 = typeof fuel60Map[nearTarget.id] === 'number' ? fuel60Map[nearTarget.id] : Math.round(nearTarget.fuel * 60);
+      const needMotes = Math.ceil((fuelMax60 - curFuel60) / fuelPerMote60);
       elPrompt.textContent = `E — Châm dầu ${nearTarget.id} (cần ${needMotes} · dầu ${nearTarget.fuel.toFixed(0)}%)`;
     }
     elPrompt.classList.remove('hidden');

@@ -28,12 +28,12 @@ In Contract v1.2, each lantern uses an extended cyclic model:
   - First light (`ever_lit == False`): requires `10` motes (`lantern_cost`).
   - Relight after extinguishing (`ever_lit == True`, `lit == False`): requires `5` motes (`relight_cost`).
 - `fuel_60: int` — integer fuel measured in `1/60` units (`FUEL_SCALE = 60`, range `0..6000` for `fuel_max = 100`).
-  - **Why integer `1/60`?** Subtracting `1/60` decay and `5/60` drain in IEEE-754 float across `18,000` ticks introduces drift (`29.9999999999` vs `30.0`), causing cross-platform threshold bugs at `fuel == 30` or `fuel == 0`. Storing integer `fuel_60` guarantees bit-identical cross-platform determinism (`int(fuel * 60)`).
+  - **Why integer `1/60`?** Subtracting `1/60` decay and `5/60` drain in IEEE-754 float across `18,000` ticks introduces drift (`29.9999999999` vs `30.0`), causing cross-platform threshold bugs at `fuel == 30` or `fuel == 0`. Storing integer `fuel_60` guarantees bit-identical cross-platform determinism (`round(float(fuel) * 60)`).
   - Snapshot formatting emits `round(fuel_60 / 60.0, 1)` when `lit` is `True`, and `0.0` when `lit` is `False`.
 - `relit_count: int` — number of relights performed after `lantern_out`.
 
 **State Transitions:**
-1. **Unlit (`lit = False`):** Accepts deposits up to `required_cost = 5 if ever_lit else 10`. Reaching `required_cost` sets `lit = True`, `ever_lit = True`, `fuel_60 = 6000`, increments `successful_lights` (boosting carry capacity `min(20, 10 + 2 * successful_lights)`), emits `lantern_lit {id, relight}`, and pushes Shades within `6.0m` out over `<= 30` ticks.
+1. **Unlit (`lit = False`):** Accepts deposits up to `required_cost = 5 if ever_lit else 10`. Reaching `required_cost` sets `lit = True`, `ever_lit = True`, `fuel_60 = 6000`, increments `successful_lights` (boosting carry capacity `min(20, 10 + 2 * successful_lights)`), emits `lantern_lit {lantern_id, relight}`, and pushes Shades within `6.0m` out over `<= 30` ticks.
 2. **Lit & Protected (`lit = True`, `fuel_60 >= 1800`):** Passive decay `-1` `fuel_60`/tick. Safe zone active (`safe_radius = 6.0m`). Eligible for refuel (`used = min(carried, ceil((6000 - fuel_60) / 600))`).
 3. **Lit & Vulnerable (`lit = True`, `0 < fuel_60 < 1800`):** Loses safe zone (`fuel_60 == 1800` still keeps protection). Eligible targets for `wander` Shades (`drain` steals `-5` `fuel_60`/tick per draining Shade on top of `-1` passive decay). Refueling back across `< 1800 -> >= 1800` restores the safe zone and pushes Shades inside `6.0m` out over `<= 30` ticks with zero damage.
 4. **Extinguished (`fuel_60 <= 0` in Step 2):** Transitions to `lit = False`, `deposited = 0`, `fuel_60 = 0`, preserves `ever_lit = True`, emits `lantern_out {lantern_id}`, and updates ambient lighting + capacity eligibility.

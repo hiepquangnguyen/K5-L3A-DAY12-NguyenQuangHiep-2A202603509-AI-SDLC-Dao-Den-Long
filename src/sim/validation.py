@@ -44,7 +44,7 @@ def _parse_vec3(value: object, label: str) -> list[float]:
 
 
 def parse_inputs_file(path: Path) -> list[dict]:
-    """Validate and normalize a Test Contract v1.1 inputs JSON file."""
+    """Validate and normalize a Test Contract v1.2 inputs JSON file."""
     data = _load_json(path, "inputs")
     if not isinstance(data, dict):
         raise ContractFormatError("Inputs root must be a JSON object")

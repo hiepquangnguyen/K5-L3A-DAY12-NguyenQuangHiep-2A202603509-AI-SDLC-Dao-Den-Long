@@ -43,3 +43,22 @@
 ## 3. Tiết kiệm Token ở Phase 2
 - Giữ ranh giới rõ ràng giữa `src/sim/` và `web/` giúp tái sử dụng nguyên khung HTTP/WS ở Phase 1, chỉ bổ sung bảng đồ thị 3 màn và các thực thể mới mà không phải viết lại kiến trúc.
 - Dồn kiểm tra 21,600 tick và 28 tests vào một lệnh `verify_gate.py` duy nhất giúp giảm hẳn các lượt gọi lặp lại của agent.
+
+---
+
+# Nhật ký dùng AI & Quản lý Token — Phase 3
+
+## 1. Cập nhật Harness AI cho Phase 3 (Contract v1.2)
+- Cập nhật [AGENTS.md](../../AGENTS.md), [SKILL.md](../../.agents/skills/verify-phase/SKILL.md), [verify_gate.py](../../.agents/hooks/verify_gate.py) và [ci.yml](../../.github/workflows/ci.yml) để kiểm tra phiên bản hợp đồng `"1.2"`, 8 khóa `tuning` mới (`fuel_max`, `win_ratio`, `drain_per_s`, `capacity_max`, ...), thời lượng `240/270/300s`, chạy `run_phase3_verification.py`, và bổ sung yêu cầu bắt buộc dùng số nguyên `fuel_60` (`1/60`).
+
+## 2. Các lỗi AI phát hiện & cách khắc phục trong Phase 3
+
+| Lần | Vấn đề phát sinh | Cách phát hiện | Cách sửa & phòng ngừa |
+|---|---|---|---|
+| **9** | Khi áp dụng `ever_lit = True` cho đèn đặt sẵn `"lit": true` trong scenario, mặc định `deposited` vô tình gán `relight_cost` (`5`) thay vì `lantern_cost` (`10`) | Chạy `unittest` ngay sau Bước 2 (`test_scenario_setup_emits_no_events_or_score` báo `5 != 10`) | Gán mặc định `deposited = max(deposited, lantern_cost)` khi `"lit": true` đặt sẵn chưa truyền `"deposited"`. |
+| **10** | Trong `test_progressive_carry_capacity_10_to_20_and_reset`, đèn `L1` vừa thắp sáng giảm `1/60` dầu ở tick tiếp theo nên ở tick 3 vẫn là mục tiêu châm dầu gần nhất (`0.0m`) thay vì thắp `L2` (`0.2m`) | Chạy `unittest` (`12 != 14`) — phát hiện hành vi chọn đèn châm dầu gần nhất hoạt động đúng | Sửa test di chuyển Mây sang `L2` ở tick 3 trước khi bấm `interact`. |
+| **11** | Ảnh chụp `night1_v12_normal.png` cho thấy vệt rách giấy của đèn tắt hơi nhô ra ngoài viền quả cầu; và rà soát độc lập phát hiện prompt HUD `[E]` dùng `fuel` làm tròn 1 chữ số bị trễ 3 tick ngay sau `100.0`, cũng như 2 câu mô tả chưa khớp tuyệt đối trong `ADR-001` / `CHANGELOG.md` | Quan sát trực tiếp ảnh chụp `night1_v12_normal.png` + báo cáo `research` subagent | Chỉnh kích thước & bán kính vệt rách ôm sát đèn (`0.14×0.34`, `r=0.665`), thêm `lantern_fuel_60` vào riêng `ui_state()` (giữ nguyên JSONL headless), cập nhật `ADR-001` & `CHANGELOG.md`, rồi chạy lại toàn bộ proof Phase 3. |
+
+## 3. Tiết kiệm Token ở Phase 3
+- Phân tách rõ công việc thành 5 bước có commit cục bộ theo từng mốc (`contract/docs` -> `src/sim` -> `tests/proof` -> `web/` -> `verify/docs`), đồng thời tái sử dụng `run_phase3_verification.py` & `verify_gate.py` một lệnh thay vì nhiều lượt kiểm tra rời rạc.
+- Dùng model `flash` cho kiểm thử trình duyệt và tái sử dụng mô phỏng tĩnh ở `src/sim/` để mọi thay đổi hiển thị (chế độ mù màu, thanh dầu, nhấp nháy `1 Hz`, dáng đèn tắt `-20%`) không đòi hỏi viết lại máy chủ hay cli.
