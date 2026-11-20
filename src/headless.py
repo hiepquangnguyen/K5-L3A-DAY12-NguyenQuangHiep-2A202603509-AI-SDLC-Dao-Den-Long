@@ -38,7 +38,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) and exc.code != 0 else 1
+        if exc.code is None or exc.code == 0:
+            return 0
+        return int(exc.code) if isinstance(exc.code, int) else 1
 
     if args.ticks < 0:
         print("Error: --ticks must be >= 0", file=sys.stderr)

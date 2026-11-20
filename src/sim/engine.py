@@ -204,13 +204,21 @@ class GameSim:
                 self._spawn_random_mote()
 
         if "shades" in sc:
+            stun_default = round(float(self.tuning["pulse_stun_s"]) * TICK_RATE)
             for item in sc["shades"]:
                 sid = item.get("id") or f"S{self._next_shade_num}"
                 self._next_shade_num = max(self._next_shade_num + 1, _numeric_suffix(sid, "S") + 1)
                 pos = item["pos"]
                 st = item.get("state", "chase")
                 self.shades.append(
-                    ShadeState(id=sid, x=float(pos[0]), y=float(pos[1]), z=float(pos[2]), state=st)
+                    ShadeState(
+                        id=sid,
+                        x=float(pos[0]),
+                        y=float(pos[1]),
+                        z=float(pos[2]),
+                        state=st,
+                        stun_ticks=stun_default if st == "stunned" else 0,
+                    )
                 )
         elif self.random_shades:
             for _ in range(2):
@@ -309,7 +317,7 @@ class GameSim:
             self.state = "won"
             self.game_over_reason = "all_lit"
             self.score += (
-                int(math.floor(self.time_left_s)) * int(self.score_cfg["per_second_left"])
+                int(math.floor(self.time_left_s + 1e-9)) * int(self.score_cfg["per_second_left"])
                 + self.player.flames * int(self.score_cfg["per_flame_left"])
             )
             events.append(
@@ -393,8 +401,6 @@ class GameSim:
         self.motes = remaining
 
     def _step_deposit(self, events: list[dict]) -> None:
-        if self.player.carried <= 0:
-            return
         interact_r = float(self.tuning["interact_radius"])
         lantern_cost = int(self.tuning["lantern_cost"])
         per_lantern = int(self.score_cfg["per_lantern"])
@@ -411,10 +417,23 @@ class GameSim:
         target = candidates[0][2]
 
         needed = max(0, lantern_cost - target.deposited)
-        amount = min(self.player.carried, needed)
-        if amount <= 0:
+        if needed == 0:
+            target.lit = True
+            self.score += per_lantern
+            events.append(
+                {
+                    "type": "event",
+                    "tick": self.tick,
+                    "name": "lantern_lit",
+                    "data": {"lantern_id": target.id},
+                }
+            )
             return
 
+        if self.player.carried <= 0:
+            return
+
+        amount = min(self.player.carried, needed)
         self.player.carried -= amount
         target.deposited += amount
         events.append(

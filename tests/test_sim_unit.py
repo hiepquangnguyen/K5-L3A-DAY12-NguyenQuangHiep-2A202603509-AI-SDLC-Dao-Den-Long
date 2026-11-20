@@ -171,6 +171,73 @@ class TestGameSimUnit(unittest.TestCase):
         self.assertEqual(spawns[0]["tick"], 1200)
         self.assertEqual(spawns[0]["data"], {"id": "S1"})
 
+    def test_fractional_time_bonus_partial_deposit_capacity_and_pulse_miss(self) -> None:
+        # Fractional time_left_s=1.4 -> 24 ticks -> 1.0s left -> 1 * per_second_left
+        sim = GameSim(
+            seed=7,
+            scenario={
+                "player": {"pos": [0, 0, 24], "carried": 3, "flames": 2},
+                "random_motes": False,
+                "random_shades": False,
+                "motes": [],
+                "shades": [],
+                "lanterns": [
+                    {"id": "L1", "pos": [0, 0, 25], "deposited": 2, "lit": False},
+                    {"id": "L2", "lit": True},
+                    {"id": "L3", "lit": True},
+                    {"id": "L4", "lit": True},
+                    {"id": "L5", "lit": True},
+                ],
+                "time_left_s": 1.4,
+            },
+            contract=self.contract,
+        )
+        for _ in range(23):
+            sim.step(InputState())
+        ev = sim.step(InputState(interact=True))
+        self.assertEqual(sim.tick, 24)
+        self.assertEqual(sim.state, "won")
+        self.assertEqual([e["name"] for e in ev], ["deposit", "lantern_lit", "game_over"])
+        # 200 (lantern) + 1*2 (time_left_s=1.0) + 2*100 (flames) = 402
+        self.assertEqual(sim.score, 402)
+
+        # Carry capacity cap & pulse miss (stunned_ids == [])
+        sim2 = GameSim(
+            seed=8,
+            scenario={
+                "player": {"pos": [0, 0, 0], "carried": 10, "flames": 3},
+                "random_motes": False,
+                "random_shades": False,
+                "motes": [{"pos": [0, 0, 0.5]}],
+                "shades": [],
+            },
+            contract=self.contract,
+        )
+        ev_cap = sim2.step(InputState(pulse=True))
+        self.assertEqual([e["name"] for e in ev_cap], ["pulse"])
+        self.assertEqual(ev_cap[0]["data"], {"stunned_ids": []})
+        # After spending pulse_cost(2) -> carried=8, next tick mote is picked -> carried=9
+        ev_pick = sim2.step(InputState(pulse=False))
+        self.assertEqual([e["name"] for e in ev_pick], ["mote_picked"])
+        self.assertEqual(sim2.player.carried, 9)
+
+    def test_negative_zero_rounding_and_jump_no_auto_rejump(self) -> None:
+        sim = GameSim(
+            seed=9,
+            scenario={"player": {"pos": [-0.0, 0.0, -0.0]}, "random_motes": False, "random_shades": False, "motes": [], "shades": []},
+            contract=self.contract,
+        )
+        snap = sim.snapshot()
+        self.assertEqual(snap["player"]["pos"], [0.0, 0.0, 0.0])
+        self.assertNotEqual(math.copysign(1.0, snap["player"]["pos"][0]), -1.0)
+
+        sim.step(InputState(jump=True))
+        # Hold jump=True all the way past landing -> must NOT auto-jump a second time
+        for _ in range(90):
+            sim.step(InputState(jump=True))
+        self.assertEqual(sim.player.y, 0.0)
+        self.assertEqual(sim.player.vy, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

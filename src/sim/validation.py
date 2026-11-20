@@ -16,13 +16,18 @@ def _is_int(value: object) -> bool:
 
 
 def _is_num(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
 
 
 def _load_json(path: Path, kind: str) -> object:
     try:
         raw = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ContractFormatError(f"Cannot read {kind} file '{path}': {exc}") from exc
     try:
         return json.loads(raw)

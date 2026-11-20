@@ -212,6 +212,36 @@ class TestHeadlessContract(unittest.TestCase):
                 self.assertEqual(proc.returncode, 2, f"Expected exit 2 for bad scenario #{idx}")
                 self.assertTrue(proc.stderr.strip())
 
+            # Non-UTF-8 bytes & huge integer overflow (10**400) -> exit code 2
+            bin_bad = Path(td) / "binary.json"
+            bin_bad.write_bytes(b"\xff\xfe\x00\x80")
+            proc_bin = run_headless(
+                "--seed", "1", "--night", "1", "--inputs", str(bin_bad), "--ticks", "10", "--out", str(out)
+            )
+            self.assertEqual(proc_bin.returncode, 2)
+            self.assertTrue(proc_bin.stderr.strip())
+
+            huge_bad = Path(td) / "huge.json"
+            huge_bad.write_text('{"frames":[{"tick":0,"cam_yaw_deg":' + ("9" * 400) + "}]}", encoding="utf-8")
+            proc_huge = run_headless(
+                "--seed", "1", "--night", "1", "--inputs", str(huge_bad), "--ticks", "10", "--out", str(out)
+            )
+            self.assertEqual(proc_huge.returncode, 2)
+            self.assertTrue(proc_huge.stderr.strip())
+
+    def test_ticks_zero_and_help_exit_zero(self) -> None:
+        help_proc = run_headless("--help")
+        self.assertEqual(help_proc.returncode, 0)
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "zero.jsonl"
+            proc = run_headless("--seed", "1", "--night", "1", "--ticks", "0", "--out", str(out))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            rows = parse_jsonl(out)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["type"], "snapshot")
+            self.assertEqual(rows[0]["tick"], 0)
+            self.assertEqual(rows[1], {"type": "end", "ticks": 0, "state": "playing", "score": 0})
+
     def test_unsupported_night_returns_nonzero(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "night2.jsonl"

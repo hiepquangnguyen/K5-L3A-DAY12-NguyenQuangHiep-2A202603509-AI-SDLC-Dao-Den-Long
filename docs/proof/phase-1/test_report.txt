@@ -9,9 +9,12 @@ test_invalid_inputs_and_scenario_exit_code_2 (test_headless_contract.TestHeadles
 test_pickup_deposit_win_scenario (test_headless_contract.TestHeadlessContract.test_pickup_deposit_win_scenario) ... ok
 test_pulse_and_safe_radius_scenario (test_headless_contract.TestHeadlessContract.test_pulse_and_safe_radius_scenario) ... ok
 test_shade_hit_and_no_flames_loss (test_headless_contract.TestHeadlessContract.test_shade_hit_and_no_flames_loss) ... ok
+test_ticks_zero_and_help_exit_zero (test_headless_contract.TestHeadlessContract.test_ticks_zero_and_help_exit_zero) ... ok
 test_unsupported_night_returns_nonzero (test_headless_contract.TestHeadlessContract.test_unsupported_night_returns_nonzero) ... ok
 test_camera_yaw_rotation_and_normalization (test_sim_unit.TestGameSimUnit.test_camera_yaw_rotation_and_normalization) ... ok
+test_fractional_time_bonus_partial_deposit_capacity_and_pulse_miss (test_sim_unit.TestGameSimUnit.test_fractional_time_bonus_partial_deposit_capacity_and_pulse_miss) ... ok
 test_invuln_window_and_drop_ratio (test_sim_unit.TestGameSimUnit.test_invuln_window_and_drop_ratio) ... ok
+test_negative_zero_rounding_and_jump_no_auto_rejump (test_sim_unit.TestGameSimUnit.test_negative_zero_rounding_and_jump_no_auto_rejump) ... ok
 test_random_shades_deterministic_spawn_event (test_sim_unit.TestGameSimUnit.test_random_shades_deterministic_spawn_event) ... ok
 test_rising_edge_for_interact_and_pulse (test_sim_unit.TestGameSimUnit.test_rising_edge_for_interact_and_pulse) ... ok
 test_safe_radius_blocks_active_shades_only_for_lit_lanterns (test_sim_unit.TestGameSimUnit.test_safe_radius_blocks_active_shades_only_for_lit_lanterns) ... ok
@@ -19,6 +22,6 @@ test_scenario_setup_emits_no_events_or_score (test_sim_unit.TestGameSimUnit.test
 test_xz_distance_ignores_jump_height_and_lands_at_zero (test_sim_unit.TestGameSimUnit.test_xz_distance_ignores_jump_height_and_lands_at_zero) ... ok
 
 ----------------------------------------------------------------------
-Ran 14 tests in 2.059s
+Ran 17 tests in 2.784s
 
 OK
