@@ -1,5 +1,5 @@
-"""Verification gate hook (Contract v1.1): ensures code compiles, contract matches config,
-all tests pass, Night 1 & 3 headless runs are byte-for-byte deterministic, and 21,600 ticks <= 30s.
+"""Verification gate hook (Contract v1.2): ensures code compiles, contract matches config,
+all tests pass, Night 1 & 3 headless runs are byte-for-byte deterministic, and Night 3 runs <= 30s.
 """
 
 from __future__ import annotations
@@ -17,7 +17,9 @@ ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_TUNING_KEYS = {
     "player_speed",
     "carry_capacity",
+    "capacity_max",
     "lantern_cost",
+    "relight_cost",
     "lantern_count_night1",
     "pickup_radius",
     "interact_radius",
@@ -26,6 +28,12 @@ REQUIRED_TUNING_KEYS = {
     "night1_duration_s",
     "night2_duration_s",
     "night3_duration_s",
+    "win_ratio",
+    "fuel_max",
+    "fuel_decay_per_s",
+    "fuel_per_mote",
+    "drain_per_s",
+    "low_fuel_threshold",
     "flames",
     "invuln_s",
     "hit_drop_ratio",
@@ -54,14 +62,17 @@ def run_step(label: str, cmd: list[str]) -> float:
 
 
 def check_contract_consistency() -> None:
-    print("[gate] Checking game.contract.json v1.1 consistency with src/sim/")
+    print("[gate] Checking game.contract.json v1.2 consistency with src/sim/")
     contract_path = ROOT / "game.contract.json"
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
-    assert contract["contract_version"] == "1.1", "contract_version must be 1.1"
+    assert contract["contract_version"] == "1.2", "contract_version must be 1.2"
     tuning = contract["tuning"]
     missing = REQUIRED_TUNING_KEYS - set(tuning.keys())
     assert not missing, f"Missing tuning keys: {missing}"
     assert tuning["lantern_count_night1"] == 5, "lantern_count_night1 must be 5"
+    assert tuning["night1_duration_s"] == 240.0, "night1_duration_s must be 240.0"
+    assert tuning["night2_duration_s"] == 270.0, "night2_duration_s must be 270.0"
+    assert tuning["night3_duration_s"] == 300.0, "night3_duration_s must be 300.0"
 
     sys.path.insert(0, str(ROOT))
     from src.sim.config import load_contract
@@ -75,9 +86,9 @@ def check_contract_consistency() -> None:
 
 
 def check_determinism_and_perf() -> None:
-    print("[gate] Checking headless determinism (Night 1 & Night 3) and 21,600-tick performance")
+    print("[gate] Checking headless determinism (Night 1 & Night 3) and Night 3 dawn performance")
     with tempfile.TemporaryDirectory() as td:
-        for night, ticks in ((1, 600), (3, 21600)):
+        for night, ticks in ((1, 600), (3, 18000)):
             out1 = Path(td) / f"n{night}_1.jsonl"
             out2 = Path(td) / f"n{night}_2.jsonl"
             base_cmd = [
@@ -102,8 +113,8 @@ def check_determinism_and_perf() -> None:
             if b1 != b2:
                 raise SystemExit(f"[gate] Night {night} determinism mismatch: {h1} != {h2}")
             print(f"[gate] Night {night} ({ticks} ticks) OK in {e1:.2f}s / {e2:.2f}s (sha256={h1[:16]}...)")
-            if ticks == 21600 and max(e1, e2) > 30.0:
-                raise SystemExit(f"[gate] Night 3 21,600-tick perf exceeded 30s: {max(e1, e2):.2f}s")
+            if ticks >= 18000 and max(e1, e2) > 30.0:
+                raise SystemExit(f"[gate] Night 3 {ticks}-tick perf exceeded 30s: {max(e1, e2):.2f}s")
 
 
 def main() -> int:
