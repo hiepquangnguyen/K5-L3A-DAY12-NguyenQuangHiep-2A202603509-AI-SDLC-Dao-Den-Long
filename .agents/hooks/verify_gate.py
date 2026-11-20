@@ -1,4 +1,4 @@
-"""Verification gate hook (Contract v1.2): ensures code compiles, contract matches config,
+"""Verification gate hook (Contract v1.3): ensures code compiles, contract matches config,
 all tests pass, Night 1 & 3 headless runs are byte-for-byte deterministic, and Night 3 runs <= 30s.
 """
 
@@ -62,10 +62,12 @@ def run_step(label: str, cmd: list[str]) -> float:
 
 
 def check_contract_consistency() -> None:
-    print("[gate] Checking game.contract.json v1.2 consistency with src/sim/")
+    print("[gate] Checking game.contract.json v1.3 consistency with src/sim/")
     contract_path = ROOT / "game.contract.json"
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
-    assert contract["contract_version"] == "1.2", "contract_version must be 1.2"
+    assert contract["contract_version"] == "1.3", "contract_version must be 1.3"
+    assert contract.get("bench_cmd"), "bench_cmd must be defined in contract v1.3"
+    assert contract.get("soak_cmd"), "soak_cmd must be defined in contract v1.3"
     tuning = contract["tuning"]
     missing = REQUIRED_TUNING_KEYS - set(tuning.keys())
     assert not missing, f"Missing tuning keys: {missing}"

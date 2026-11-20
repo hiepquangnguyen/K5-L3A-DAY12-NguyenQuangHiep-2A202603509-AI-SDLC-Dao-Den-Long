@@ -161,12 +161,14 @@ class GameSim:
         night: int = 1,
         scenario: dict | None = None,
         contract: dict | None = None,
+        bench_mode: bool = False,
     ) -> None:
         if night not in NIGHT_DURATION_KEYS:
             raise ValueError(f"Unsupported night={night}; expected 1, 2, or 3")
 
         self.seed = int(seed)
         self.night = int(night)
+        self.bench_mode = bool(bench_mode)
         self.night_map: NightMap = get_night_map(self.night)
         self.contract = contract or load_contract()
         self.tuning = self.contract["tuning"]
@@ -257,6 +259,72 @@ class GameSim:
             self.wind_enabled = bool(sc["wind_enabled"])
 
         self._apply_scenario(sc)
+
+    @classmethod
+    def create_benchmark(cls, seed: int = 42, contract: dict | None = None) -> "GameSim":
+        """Create standardized Contract v1.3 benchmark scene on Night 1 (200 Shades, 100 Motes, L1-L3 lit)."""
+        sim = cls(
+            seed=seed,
+            night=1,
+            scenario={
+                "random_motes": False,
+                "random_shades": False,
+                "random_drifters": False,
+                "wind_enabled": False,
+            },
+            contract=contract,
+            bench_mode=True,
+        )
+        sim.rng = SeededRNG(int(seed))
+        lantern_cost = int(sim.tuning["lantern_cost"])
+        safe_r = float(sim.tuning["safe_radius"])
+
+        for idx, lantern in enumerate(sim.lanterns):
+            if idx < 3:  # L1..L3 lit at fuel 100
+                lantern.lit = True
+                lantern.ever_lit = True
+                lantern.deposited = lantern_cost
+                lantern.fuel_60 = sim._fuel_max_60
+            else:  # L4..L5 unlit
+                lantern.lit = False
+                lantern.ever_lit = False
+                lantern.deposited = 0
+                lantern.fuel_60 = 0
+
+        lit_l = sim.lanterns[:3]
+        for i in range(200):
+            x, z = 0.0, 0.0
+            for _ in range(32):
+                rad = math.sqrt(sim.rng.uniform(0.0, 1.0)) * 37.5
+                ang = sim.rng.uniform(0.0, math.tau)
+                cx, cz = math.cos(ang) * rad, math.sin(ang) * rad
+                if all(dist_xz(cx, cz, l.x, l.z) >= safe_r + 0.25 for l in lit_l):
+                    x, z = cx, cz
+                    break
+            sid = f"S{i + 1}"
+            sim.shades.append(
+                ShadeState(
+                    id=sid,
+                    x=x,
+                    y=SHADE_DEFAULT_Y,
+                    z=z,
+                    home_x=x,
+                    home_z=z,
+                    state="wander",
+                    wander_x=x,
+                    wander_z=z,
+                )
+            )
+        sim._next_shade_num = 201
+
+        for i in range(100):
+            rad = math.sqrt(sim.rng.uniform(0.0, 1.0)) * 37.0
+            ang = sim.rng.uniform(0.0, math.tau)
+            mx, mz = math.cos(ang) * rad, math.sin(ang) * rad
+            sim.motes.append(MoteState(id=f"M{i + 1}", x=mx, y=0.0, z=mz, kind="random"))
+        sim._next_mote_num = 101
+
+        return sim
 
     def _apply_scenario(self, sc: dict) -> None:
         """Apply scenario overrides without emitting events or awarding score."""
@@ -501,6 +569,13 @@ class GameSim:
     def step(self, inp: InputState) -> list[dict]:
         """Advance simulation by one tick following Ticket-02 mandatory 12-step order."""
         if self.state in ("won", "lost"):
+            return []
+
+        if self.bench_mode:
+            self.tick += 1
+            self.sim_tick += 1
+            self._step_safe_zones()
+            self._step_shades_movement()
             return []
 
         # 1. Read input (process pause edge first)
@@ -1267,7 +1342,12 @@ class GameSim:
                 shade.state = "wander"
                 shade.target_lantern_id = None
                 shade.drain_ticks = 0
-            elif shade.state == "wander" and not shade.just_recovered_stun and d_player <= 12.0:
+            elif (
+                not self.bench_mode
+                and shade.state == "wander"
+                and not shade.just_recovered_stun
+                and d_player <= 12.0
+            ):
                 shade.state = "chase"
                 shade.target_lantern_id = None
                 shade.drain_ticks = 0

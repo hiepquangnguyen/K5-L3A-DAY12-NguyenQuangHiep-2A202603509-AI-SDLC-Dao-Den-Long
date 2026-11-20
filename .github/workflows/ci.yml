@@ -20,5 +20,5 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: Run full verification gate
         run: python3 .agents/hooks/verify_gate.py
-      - name: Run phase 3 verification script (check-only)
-        run: python3 scripts/run_phase3_verification.py --check-only
+      - name: Run phase 4 verification script (check-only)
+        run: python3 scripts/run_phase4_verification.py --check-only

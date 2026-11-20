@@ -36,7 +36,8 @@ class TestPhase3ChangeRequest(unittest.TestCase):
         self.tuning = self.contract["tuning"]
 
     def test_contract_v1_2_durations_and_tuning_keys(self) -> None:
-        self.assertEqual(self.contract["contract_version"], "1.2")
+        # Contract v1.3 (Phase 4) is a strict superset of v1.2, preserving all v1.2 tuning keys.
+        self.assertEqual(self.contract["contract_version"], "1.3")
         self.assertEqual(self.tuning["night1_duration_s"], 240.0)
         self.assertEqual(self.tuning["night2_duration_s"], 270.0)
         self.assertEqual(self.tuning["night3_duration_s"], 300.0)

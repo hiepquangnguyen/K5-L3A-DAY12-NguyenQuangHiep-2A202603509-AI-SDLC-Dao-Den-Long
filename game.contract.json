@@ -1,9 +1,11 @@
 {
-  "contract_version": "1.2",
+  "contract_version": "1.3",
   "team": "2A202603509-NguyenQuangHiep",
   "build_cmd": "python3 -m compileall -q src",
   "run_cmd": "python3 -m src.play",
   "headless_cmd": "python3 -m src.headless",
+  "bench_cmd": "python3 -m src.bench",
+  "soak_cmd": "python3 -m src.soak",
   "tuning": {
     "player_speed": 6.0,
     "carry_capacity": 10,

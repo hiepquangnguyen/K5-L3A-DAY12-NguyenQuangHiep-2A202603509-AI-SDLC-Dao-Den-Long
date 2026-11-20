@@ -21,3 +21,5 @@ Thumbs.db
 tmp/
 *.tmp
 *.log
+data/
+dist/

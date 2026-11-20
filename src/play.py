@@ -15,6 +15,7 @@ from pathlib import Path
 
 from src.sim.config import ROOT_DIR, TICK_RATE, load_contract
 from src.sim.engine import GameSim, InputState
+from src.sim.leaderboard import LeaderboardError, add_entry, export_leaderboard, load_entries
 
 WEB_DIR = ROOT_DIR / "web"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -121,6 +122,7 @@ class ClientSession:
         self.night = 1
         self.started = False
         self.campaign_score = 0
+        self.nights_won = 0
         self._credited_this_night = False
         self.sim = GameSim(seed=self.seed, night=self.night, contract=self.contract)
         self.move_x = 0.0
@@ -141,6 +143,7 @@ class ClientSession:
     ) -> None:
         if reset_campaign:
             self.campaign_score = 0
+            self.nights_won = 0
         if new_seed is not None:
             self.seed = int(new_seed)
         self.night = int(night) if int(night) in (1, 2, 3) else 1
@@ -170,11 +173,14 @@ class ClientSession:
         if self.sim.state == "won" and not self._credited_this_night:
             self._credited_this_night = True
             self.campaign_score += self.sim.score
+            self.nights_won = min(3, self.nights_won + 1)
         return events
 
     def frame_payload(self, events: list[dict]) -> dict:
         st = self.sim.ui_state()
         st["campaign_score"] = self.campaign_score
+        st["nights_won"] = self.nights_won
+        st["seed"] = self.seed
         st["session_started"] = self.started
         return {"type": "frame", "state": st, "events": events}
 
@@ -321,6 +327,11 @@ async def _send_http_response(
     await writer.drain()
 
 
+async def _send_http_json(writer: asyncio.StreamWriter, status: int, reason: str, obj: dict) -> None:
+    body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    await _send_http_response(writer, status, reason, "application/json; charset=utf-8", body)
+
+
 async def _handle_connection(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
@@ -352,13 +363,44 @@ async def _handle_connection(
             await _handle_websocket(reader, writer, headers, seed, contract)
             return
 
+        if raw_path == "/api/leaderboard" and method == "GET":
+            await _send_http_json(writer, 200, "OK", {"entries": load_entries()})
+            return
+
+        if raw_path == "/api/leaderboard" and method == "POST":
+            try:
+                content_len = int(headers.get("content-length", "0"))
+            except ValueError:
+                content_len = -1
+            if content_len <= 0 or content_len > 16384:
+                await _send_http_json(writer, 400, "Bad Request", {"error": "Invalid Content-Length"})
+                return
+            body_raw = await asyncio.wait_for(reader.readexactly(content_len), timeout=5.0)
+            try:
+                data = json.loads(body_raw.decode("utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("Payload must be a JSON object")
+                saved, ranked = add_entry(
+                    name=str(data.get("name", "")),
+                    score=int(data.get("score", 0)),
+                    nights_won=int(data.get("nights_won", 0)),
+                    seed=int(data.get("seed", 0)),
+                )
+            except LeaderboardError as exc:
+                await _send_http_json(writer, 400, "Bad Request", {"error": str(exc)})
+                return
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                await _send_http_json(writer, 400, "Bad Request", {"error": f"Malformed payload: {exc}"})
+                return
+            await _send_http_json(writer, 200, "OK", {"saved": saved, "entries": ranked})
+            return
+
         if method != "GET":
             await _send_http_response(writer, 405, "Method Not Allowed", "text/plain", b"Method Not Allowed")
             return
 
         if raw_path == "/api/config":
-            body = json.dumps(contract, ensure_ascii=False).encode("utf-8")
-            await _send_http_response(writer, 200, "OK", "application/json; charset=utf-8", body)
+            await _send_http_json(writer, 200, "OK", contract)
             return
 
         rel_path = "index.html" if raw_path == "/" else raw_path.lstrip("/")
@@ -419,7 +461,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8765, help="Preferred HTTP/WS port (default: 8765)")
     parser.add_argument("--seed", type=int, default=42, help="Initial PRNG seed (default: 42)")
     parser.add_argument("--no-open", action="store_true", help="Do not open browser automatically")
+    parser.add_argument(
+        "--export-leaderboard",
+        type=Path,
+        default=None,
+        help="Export sorted Top-10 leaderboard JSON to path and exit 0",
+    )
     args = parser.parse_args(argv)
+
+    if args.export_leaderboard is not None:
+        try:
+            export_leaderboard(args.export_leaderboard)
+        except OSError as exc:
+            print(f"Export leaderboard error: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     try:
         asyncio.run(_serve(args.host, args.port, args.seed, args.no_open))
