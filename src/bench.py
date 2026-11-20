@@ -263,7 +263,7 @@ async def _handle_bench_conn(
         if method == "GET":
             rel = "bench.html" if path in ("/", "/bench", "/bench.html") else path.lstrip("/")
             cand = (WEB_DIR / rel).resolve()
-            if str(cand).startswith(str(WEB_DIR.resolve())) and cand.is_file():
+            if cand.is_relative_to(WEB_DIR.resolve()) and cand.is_file():
                 mime = MIME_TYPES.get(cand.suffix.lower(), "application/octet-stream")
                 await _send_http(writer, 200, "OK", mime, cand.read_bytes())
                 return

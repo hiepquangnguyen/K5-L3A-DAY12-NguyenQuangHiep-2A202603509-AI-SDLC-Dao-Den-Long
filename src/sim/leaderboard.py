@@ -45,7 +45,7 @@ def _parse_iso_timestamp(value: object) -> float:
     try:
         dt = datetime.fromisoformat(value)
         return dt.timestamp()
-    except ValueError:
+    except (ValueError, OSError, OverflowError):
         return float("inf")
 
 

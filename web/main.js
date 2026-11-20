@@ -596,6 +596,11 @@ const desiredTargetPos = new THREE.Vector3();
 
 function clearEntityPools() {
   camInitialized = false;
+  recentShadeAlert = null;
+  lastCountdownSec = -1;
+  wasWindWarn = false;
+  if (typeof elShadeArrow !== 'undefined' && elShadeArrow) elShadeArrow.classList.add('hidden');
+  if (typeof elCaptions !== 'undefined' && elCaptions) elCaptions.classList.add('hidden');
   for (const v of lanternObjects.values()) scene.remove(v.group);
   for (const v of moteObjects.values()) scene.remove(v.group);
   for (const v of shadeObjects.values()) scene.remove(v.group);
@@ -1043,6 +1048,7 @@ window.addEventListener('keydown', (e) => {
   // Handle key rebinding capture cleanly inside Settings modal
   if (activeScreen === 'settings' && listeningAction) {
     e.preventDefault();
+    if (!code || code === 'Unidentified') return;
     if (code === 'Escape') {
       listeningAction = null;
       renderKeybindGrid();
@@ -1077,7 +1083,11 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if ([settings.keybinds.jump, 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
+  if (
+    [settings.keybinds.jump, 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code) ||
+    (activeScreen === 'play' &&
+      [settings.keybinds.dash, settings.keybinds.interact, settings.keybinds.pulse].includes(code))
+  ) {
     e.preventDefault();
   }
   if (!keys.has(code) && activeScreen === 'play') {
@@ -1240,6 +1250,7 @@ function updateKeybindLabelsUI() {
   const elDashSkill = document.getElementById('skill-dash-key');
   const elPulseSkill = document.getElementById('skill-pulse-key');
   const elPauseBtn = document.getElementById('btn-pause-hud');
+  const elBtnResume = document.getElementById('btn-resume');
   if (elMove) elMove.textContent = mv;
   if (elJump) elJump.textContent = formatKeyCode(kb.jump);
   if (elDash) elDash.textContent = formatKeyCode(kb.dash);
@@ -1249,6 +1260,7 @@ function updateKeybindLabelsUI() {
   if (elDashSkill) elDashSkill.textContent = formatKeyCode(kb.dash);
   if (elPulseSkill) elPulseSkill.textContent = formatKeyCode(kb.pulse);
   if (elPauseBtn) elPauseBtn.textContent = `⏸ Dừng [${formatKeyCode(kb.pause)}]`;
+  if (elBtnResume) elBtnResume.textContent = `Tiếp tục [Esc / ${formatKeyCode(kb.pause)}]`;
 }
 function renderKeybindGrid() {
   if (!elKeybindGrid) return;
@@ -1869,7 +1881,8 @@ function updateShadeSpawnArrow(st) {
   const len = Math.max(0.001, Math.hypot(sx, sy));
   const nx = sx / len;
   const ny = sy / len;
-  const edgeScale = 0.84 / Math.max(Math.abs(nx), Math.abs(ny));
+  const maxAxis = Math.max(0.001, Math.max(Math.abs(nx), Math.abs(ny)));
+  const edgeScale = 0.84 / maxAxis;
   const rawCx = (nx * edgeScale * 0.5 + 0.5) * window.innerWidth;
   const rawCy = (-ny * edgeScale * 0.5 + 0.5) * window.innerHeight;
   const cx = Math.max(180, Math.min(window.innerWidth - 180, rawCx));

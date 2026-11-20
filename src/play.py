@@ -380,16 +380,25 @@ async def _handle_connection(
                 data = json.loads(body_raw.decode("utf-8"))
                 if not isinstance(data, dict):
                     raise ValueError("Payload must be a JSON object")
+                raw_name = data.get("name")
+                raw_score = data.get("score", 0)
+                raw_nights = data.get("nights_won", 0)
+                raw_seed = data.get("seed", 0)
+                if not isinstance(raw_name, str):
+                    raise ValueError("name must be a string")
+                for field_name, field_val in (("score", raw_score), ("nights_won", raw_nights), ("seed", raw_seed)):
+                    if not isinstance(field_val, int) or isinstance(field_val, bool):
+                        raise ValueError(f"{field_name} must be an integer")
                 saved, ranked = add_entry(
-                    name=str(data.get("name", "")),
-                    score=int(data.get("score", 0)),
-                    nights_won=int(data.get("nights_won", 0)),
-                    seed=int(data.get("seed", 0)),
+                    name=raw_name,
+                    score=raw_score,
+                    nights_won=raw_nights,
+                    seed=raw_seed,
                 )
             except LeaderboardError as exc:
                 await _send_http_json(writer, 400, "Bad Request", {"error": str(exc)})
                 return
-            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, OverflowError) as exc:
                 await _send_http_json(writer, 400, "Bad Request", {"error": f"Malformed payload: {exc}"})
                 return
             await _send_http_json(writer, 200, "OK", {"saved": saved, "entries": ranked})
@@ -405,7 +414,7 @@ async def _handle_connection(
 
         rel_path = "index.html" if raw_path == "/" else raw_path.lstrip("/")
         candidate = (WEB_DIR / rel_path).resolve()
-        if not str(candidate).startswith(str(WEB_DIR.resolve())) or not candidate.is_file():
+        if not candidate.is_relative_to(WEB_DIR.resolve()) or not candidate.is_file():
             await _send_http_response(writer, 404, "Not Found", "text/plain", b"Not Found")
             return
 

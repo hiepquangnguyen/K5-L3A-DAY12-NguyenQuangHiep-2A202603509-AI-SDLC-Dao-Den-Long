@@ -31,6 +31,13 @@ def _get_rss_bytes_windows(pid: int) -> int | None:
         kernel32 = ctypes.windll.kernel32
         psapi = ctypes.windll.psapi
 
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, False, pid)
         if not handle:
             handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
@@ -68,8 +75,17 @@ def _get_descendant_pids_windows(root_pid: int) -> list[int]:
             ]
 
         TH32CS_SNAPPROCESS = 0x00000002
-        INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+        INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
         kernel32 = ctypes.windll.kernel32
+        kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+        kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+        kernel32.Process32FirstW.restype = wintypes.BOOL
+        kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+        kernel32.Process32NextW.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
         snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
         if snap == INVALID_HANDLE_VALUE or not snap:
             return [root_pid]
@@ -161,7 +177,7 @@ def get_process_tree_rss_mb(root_pids: list[int]) -> float | None:
                 total_bytes += b
         return round(total_bytes / (1024.0 * 1024.0), 1) if total_bytes > 0 else None
 
-    if sys.platform.startswith("linux"):
+    if sys.platform.startswith(("linux", "darwin")):
         # Aggregate root_pids plus matching children via ps
         try:
             proc = subprocess.run(
