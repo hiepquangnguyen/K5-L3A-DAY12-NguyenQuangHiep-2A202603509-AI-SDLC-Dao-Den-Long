@@ -8,11 +8,18 @@
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
+  <div id="screen-flash" class="screen-flash hidden"></div>
 
-  <!-- Off-screen directional pointer to nearest unlit lantern -->
+  <!-- Off-screen directional pointer to nearest unlit / weak lantern -->
   <div id="offscreen-arrow" class="offscreen-arrow hidden">
     <div class="arrow-triangle"></div>
     <span id="offscreen-label">L1</span>
+  </div>
+
+  <!-- Directional pointer for newly spawned Shade (accessibility visual cue) -->
+  <div id="shade-spawn-arrow" class="offscreen-arrow shade-arrow hidden">
+    <div class="arrow-triangle"></div>
+    <span id="shade-arrow-label">🌑 S1</span>
   </div>
 
   <!-- HUD -->
@@ -65,13 +72,12 @@
 
     <div class="hud-mid">
       <div id="event-toast" class="event-toast hidden"></div>
+      <div id="hud-captions" class="hud-captions hidden"></div>
       <div id="context-prompt" class="context-prompt hidden"></div>
     </div>
 
     <div class="hud-bottom">
-      <div class="hud-bottom-spacer"></div>
-
-      <!-- Bottom-center: 10-slot Firefly Bar + Key Legend -->
+      <!-- Bottom-center/left: Firefly Bar + Dynamic Key Legend -->
       <div class="hud-bc">
         <div class="mote-meter-panel">
           <div class="mote-meter-header">
@@ -80,14 +86,13 @@
           </div>
           <div id="mote-slots" class="mote-slots"></div>
         </div>
-        <div class="controls-bar">
-          <span><kbd>WASD</kbd> Đi</span>
-          <span><kbd>Space</kbd> Nhảy</span>
-          <span><kbd>Shift</kbd> Lướt</span>
-          <span><kbd>E</kbd> Nạp đèn</span>
-          <span><kbd>F</kbd>/<kbd>J</kbd> Tỏa Sáng</span>
-          <span><kbd>Click+Chuột</kbd>/<kbd>Q</kbd><kbd>C</kbd> Xoay cam</span>
-          <span><kbd>Esc</kbd>/<kbd>P</kbd> Tạm dừng</span>
+        <div id="controls-bar" class="controls-bar">
+          <span><kbd id="kb-hint-move">WASD</kbd> Đi</span>
+          <span><kbd id="kb-hint-jump">Space</kbd> Nhảy</span>
+          <span><kbd id="kb-hint-dash">Shift</kbd> Lướt</span>
+          <span><kbd id="kb-hint-interact">E</kbd> Nạp</span>
+          <span><kbd id="kb-hint-pulse">F</kbd> Tỏa Sáng</span>
+          <span><kbd id="kb-hint-pause">P</kbd> Dừng</span>
         </div>
       </div>
 
@@ -96,14 +101,14 @@
         <div class="skill-card" id="skill-dash">
           <div class="skill-icon">💨</div>
           <div class="skill-info">
-            <span class="skill-name">Lướt [Shift]</span>
+            <span class="skill-name">Lướt [<span id="skill-dash-key">Shift</span>]</span>
             <span id="hud-dash-cd" class="skill-state ready">Sẵn sàng</span>
           </div>
         </div>
         <div class="skill-card" id="skill-pulse">
           <div class="skill-icon">✨</div>
           <div class="skill-info">
-            <span class="skill-name">Tỏa Sáng [F]</span>
+            <span class="skill-name">Tỏa Sáng [<span id="skill-pulse-key">F</span>]</span>
             <span id="hud-pulse-cd" class="skill-state cooldown">Cần 3 đom đóm</span>
           </div>
         </div>
@@ -126,7 +131,35 @@
           <button type="button" class="btn-secondary night-pick" data-night="2">Đêm 2 · Đảo Cau</button>
           <button type="button" class="btn-secondary night-pick" data-night="3">Đêm 3 · Đảo Chuông</button>
         </div>
-        <button id="btn-menu-settings" type="button" class="btn-secondary">⚙ Cài đặt (Âm lượng, Chuột & Mù màu)</button>
+        <button id="btn-menu-leaderboard" type="button" class="btn-secondary">🏆 Bảng xếp hạng</button>
+        <button id="btn-menu-settings" type="button" class="btn-secondary">⚙ Cài đặt & Dễ tiếp cận</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboard Modal Overlay -->
+  <div id="leaderboard-overlay" class="overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-eyebrow">Top 10 Người Giữ Đèn</div>
+      <h1>Bảng Xếp Hạng</h1>
+      <div id="leaderboard-table-wrap" class="lb-table-wrap">
+        <table class="lb-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Tên</th>
+              <th>Điểm</th>
+              <th>Đêm thắng</th>
+              <th>Thời gian</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-tbody">
+            <tr><td colspan="5">Chưa có kỷ lục nào.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="menu-buttons">
+        <button id="btn-leaderboard-close" type="button" class="btn-primary">Quay lại</button>
       </div>
     </div>
   </div>
@@ -158,8 +191,8 @@
 
   <!-- Settings Modal Overlay -->
   <div id="settings-overlay" class="overlay hidden">
-    <div class="modal">
-      <h1>Cài đặt</h1>
+    <div class="modal modal-wide">
+      <h1>Cài đặt & Dễ tiếp cận</h1>
       <div class="settings-form">
         <label class="setting-row">
           <span>Âm lượng: <strong id="val-volume">70%</strong></span>
@@ -173,6 +206,23 @@
           <input id="opt-colorblind" type="checkbox" />
           <span>Bảng màu dễ phân biệt</span>
         </label>
+        <label class="setting-check-row">
+          <input id="opt-large-text" type="checkbox" />
+          <span>Chữ lớn (×1.25)</span>
+        </label>
+        <label class="setting-check-row">
+          <input id="opt-reduced-motion" type="checkbox" />
+          <span>Giảm chuyển động (tắt rung camera & chớp)</span>
+        </label>
+
+        <div class="keybind-section">
+          <div class="keybind-header">
+            <span>Đổi phím điều khiển</span>
+            <button id="btn-reset-keys" type="button" class="btn-chip">Khôi phục mặc định</button>
+          </div>
+          <div id="keybind-error" class="keybind-error hidden"></div>
+          <div id="keybind-grid" class="keybind-grid"></div>
+        </div>
       </div>
       <button id="btn-settings-close" type="button" class="btn-primary">Lưu & Quay lại</button>
     </div>
@@ -180,7 +230,7 @@
 
   <!-- Night Result / Dawn Screen Overlay -->
   <div id="gameover-overlay" class="overlay hidden">
-    <div class="modal">
+    <div class="modal modal-wide">
       <div id="modal-eyebrow" class="modal-eyebrow">Kết quả</div>
       <h1 id="modal-title">Kết thúc</h1>
       <p id="modal-subtitle"></p>
@@ -189,6 +239,14 @@
         <div><span>Tổng Điểm</span><strong id="modal-campaign-score">0</strong></div>
         <div><span>Đèn Đã Thắp</span><strong id="modal-lanterns">0 / 5</strong></div>
         <div><span>Ngọn Lửa Còn</span><strong id="modal-flames">0</strong></div>
+      </div>
+      <div id="lb-save-box" class="lb-save-box hidden">
+        <label for="lb-name-input" class="lb-save-label">Lưu điểm vào Bảng xếp hạng (3–12 ký tự):</label>
+        <div class="lb-save-row">
+          <input id="lb-name-input" type="text" maxlength="12" placeholder="VD: May_01" autocomplete="off" />
+          <button id="btn-lb-save" type="button" class="btn-primary">Lưu điểm</button>
+        </div>
+        <div id="lb-feedback" class="lb-feedback hidden"></div>
       </div>
       <div class="menu-buttons">
         <button id="btn-next-night" type="button" class="btn-primary hidden">Sang Đêm kế tiếp →</button>

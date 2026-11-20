@@ -26,21 +26,80 @@ const PALETTE = {
   fuelHealthy: 0x5ee38c,
 };
 
-// ---------- Settings Persistence ----------
+// ---------- Settings, Keybinds & Accessibility Persistence ----------
 const SETTINGS_KEY = 'ddl_settings_v1';
+const DEFAULT_KEYBINDS = {
+  moveUp: 'KeyW',
+  moveDown: 'KeyS',
+  moveLeft: 'KeyA',
+  moveRight: 'KeyD',
+  jump: 'Space',
+  dash: 'ShiftLeft',
+  interact: 'KeyE',
+  pulse: 'KeyF',
+  pause: 'KeyP',
+};
+const KEYBIND_LABELS = {
+  moveUp: 'Đi lên (Tiến)',
+  moveDown: 'Đi xuống (Lùi)',
+  moveLeft: 'Đi trái',
+  moveRight: 'Đi phải',
+  jump: 'Nhảy',
+  dash: 'Lướt',
+  interact: 'Tương tác',
+  pulse: 'Tỏa Sáng',
+  pause: 'Tạm dừng',
+};
+function formatKeyCode(code) {
+  if (!code) return '?';
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  const map = {
+    Space: 'Space',
+    ShiftLeft: 'L-Shift',
+    ShiftRight: 'R-Shift',
+    ControlLeft: 'L-Ctrl',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    ArrowLeft: '←',
+    ArrowRight: '→',
+    Enter: 'Enter',
+    Tab: 'Tab',
+  };
+  return map[code] || code;
+}
 function loadSettings() {
+  const prefersReduced = Boolean(
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+  const base = {
+    volume: 70,
+    sensitivity: 1.0,
+    colorblind: false,
+    largeText: false,
+    reducedMotion: prefersReduced,
+    keybinds: { ...DEFAULT_KEYBINDS },
+  };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
       const p = JSON.parse(raw);
-      return {
-        volume: typeof p.volume === 'number' ? Math.max(0, Math.min(100, p.volume)) : 70,
-        sensitivity: typeof p.sensitivity === 'number' ? Math.max(0.2, Math.min(2.5, p.sensitivity)) : 1.0,
-        colorblind: Boolean(p.colorblind),
-      };
+      base.volume = typeof p.volume === 'number' ? Math.max(0, Math.min(100, p.volume)) : base.volume;
+      base.sensitivity =
+        typeof p.sensitivity === 'number' ? Math.max(0.2, Math.min(2.5, p.sensitivity)) : base.sensitivity;
+      base.colorblind = Boolean(p.colorblind);
+      base.largeText = Boolean(p.largeText);
+      if (typeof p.reducedMotion === 'boolean') base.reducedMotion = p.reducedMotion;
+      if (p.keybinds && typeof p.keybinds === 'object') {
+        for (const k of Object.keys(DEFAULT_KEYBINDS)) {
+          if (typeof p.keybinds[k] === 'string' && p.keybinds[k].length > 0) {
+            base.keybinds[k] = p.keybinds[k];
+          }
+        }
+      }
     }
   } catch (_) {}
-  return { volume: 70, sensitivity: 1.0, colorblind: false };
+  return base;
 }
 function saveSettings(cfg) {
   try {
@@ -71,6 +130,11 @@ function applyColorblindSetting() {
       vis.fuelFillMat.color.setHex(getDangerHex());
     }
   }
+}
+function applyAccessibilitySettings() {
+  applyColorblindSetting();
+  document.documentElement.classList.toggle('large-text', Boolean(settings.largeText));
+  document.body.classList.toggle('reduced-motion', Boolean(settings.reducedMotion));
 }
 
 // ---------- Procedural Web Audio Engine (Night Ambience + All SFX) ----------
@@ -814,10 +878,15 @@ const elMoteSlots = document.getElementById('mote-slots');
 const elDashCd = document.getElementById('hud-dash-cd');
 const elPulseCd = document.getElementById('hud-pulse-cd');
 const elToast = document.getElementById('event-toast');
+const elCaptions = document.getElementById('hud-captions');
+const elFlash = document.getElementById('screen-flash');
 const elPrompt = document.getElementById('context-prompt');
 const elArrow = document.getElementById('offscreen-arrow');
 const elArrowTri = elArrow.querySelector('.arrow-triangle');
 const elArrowLabel = document.getElementById('offscreen-label');
+const elShadeArrow = document.getElementById('shade-spawn-arrow');
+const elShadeArrowTri = elShadeArrow.querySelector('.arrow-triangle');
+const elShadeArrowLabel = document.getElementById('shade-arrow-label');
 
 // Build up to 20 progressive carry-capacity firefly slots (10..20)
 const moteSlotEls = [];
@@ -833,14 +902,35 @@ const ovIntro = document.getElementById('intro-overlay');
 const ovPause = document.getElementById('pause-overlay');
 const ovSettings = document.getElementById('settings-overlay');
 const ovGameOver = document.getElementById('gameover-overlay');
+const ovLeaderboard = document.getElementById('leaderboard-overlay');
 
-let activeScreen = 'menu'; // menu | intro | play | pause | settings | gameover
+let activeScreen = 'menu'; // menu | intro | play | pause | settings | gameover | leaderboard
 let settingsReturnTo = 'menu';
 let pendingNight = 1;
 let pendingResetCampaign = true;
 let lastCountdownSec = -1;
 let lastDrainToastMs = 0;
 let wasWindWarn = false;
+let listeningAction = null;
+let recentShadeAlert = null; // { id, expiresAt }
+let shakeTime = 0;
+let shakeIntensity = 0;
+
+function triggerScreenFlash() {
+  if (settings.reducedMotion || !elFlash) return;
+  elFlash.classList.remove('hidden');
+  elFlash.classList.add('active');
+  setTimeout(() => {
+    elFlash.classList.remove('active');
+    setTimeout(() => elFlash.classList.add('hidden'), 260);
+  }, 120);
+}
+
+function triggerCameraShake(intensity, durS) {
+  if (settings.reducedMotion) return;
+  shakeIntensity = Math.max(shakeIntensity, intensity);
+  shakeTime = Math.max(shakeTime, durS);
+}
 
 let toastTimeout = null;
 function showToast(text, danger = false) {
@@ -854,6 +944,7 @@ function showToast(text, danger = false) {
 
 function setScreen(scr) {
   activeScreen = scr;
+  listeningAction = null;
   if (scr !== 'play') {
     exitPointerLockSafe();
   }
@@ -862,6 +953,7 @@ function setScreen(scr) {
   ovPause.classList.toggle('hidden', scr !== 'pause');
   ovSettings.classList.toggle('hidden', scr !== 'settings');
   ovGameOver.classList.toggle('hidden', scr !== 'gameover');
+  if (ovLeaderboard) ovLeaderboard.classList.toggle('hidden', scr !== 'leaderboard');
 }
 
 const NIGHT_INTROS = {
@@ -947,18 +1039,56 @@ document.addEventListener('pointerlockchange', () => {
 window.addEventListener('keydown', (e) => {
   sfx.unlock();
   const code = e.code;
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
+
+  // Handle key rebinding capture cleanly inside Settings modal
+  if (activeScreen === 'settings' && listeningAction) {
+    e.preventDefault();
+    if (code === 'Escape') {
+      listeningAction = null;
+      renderKeybindGrid();
+      return;
+    }
+    const reserved = { KeyQ: 'Xoay cam trái', KeyC: 'Xoay cam phải', KeyM: 'Tắt/bật âm thanh' };
+    if (reserved[code]) {
+      showKeybindError(`Phím [${formatKeyCode(code)}] dành cho "${reserved[code]}". Vui lòng chọn phím khác.`);
+      listeningAction = null;
+      renderKeybindGrid();
+      return;
+    }
+    for (const [act, bound] of Object.entries(settings.keybinds)) {
+      if (act !== listeningAction && bound === code) {
+        showKeybindError(`Phím [${formatKeyCode(code)}] bị trùng với "${KEYBIND_LABELS[act]}".`);
+        listeningAction = null;
+        renderKeybindGrid();
+        return;
+      }
+    }
+    settings.keybinds[listeningAction] = code;
+    listeningAction = null;
+    hideKeybindError();
+    saveSettings(settings);
+    updateKeybindLabelsUI();
+    renderKeybindGrid();
+    return;
+  }
+
+  // Never trigger game hotkeys while typing player name in leaderboard input
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+    return;
+  }
+
+  if ([settings.keybinds.jump, 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
     e.preventDefault();
   }
   if (!keys.has(code) && activeScreen === 'play') {
-    if (code === 'Space') sfx.jump();
+    if (code === settings.keybinds.jump) sfx.jump();
   }
   keys.add(code);
 
   if (code === 'KeyM') {
     const muted = sfx.toggleMute();
     document.getElementById('btn-mute-hud').textContent = muted ? '🔇' : '🔊';
-  } else if ((code === 'Escape' || code === 'KeyP') && !e.repeat) {
+  } else if ((code === 'Escape' || code === settings.keybinds.pause) && !e.repeat) {
     const recentlyUnlocked = performance.now() - lastLockPauseMs < 150;
     if ((activeScreen === 'play' || activeScreen === 'pause') && !(code === 'Escape' && (pointerLocked || recentlyUnlocked))) {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1075,14 +1205,75 @@ document.getElementById('btn-pause-menu').addEventListener('click', () => {
 const inputVol = document.getElementById('input-volume');
 const inputSens = document.getElementById('input-sens');
 const optColorblind = document.getElementById('opt-colorblind');
+const optLargeText = document.getElementById('opt-large-text');
+const optReducedMotion = document.getElementById('opt-reduced-motion');
+const elKeybindGrid = document.getElementById('keybind-grid');
+const elKeybindError = document.getElementById('keybind-error');
 const valVol = document.getElementById('val-volume');
 const valSens = document.getElementById('val-sens');
 inputVol.value = String(settings.volume);
 inputSens.value = String(settings.sensitivity);
 optColorblind.checked = Boolean(settings.colorblind);
+optLargeText.checked = Boolean(settings.largeText);
+optReducedMotion.checked = Boolean(settings.reducedMotion);
 valVol.textContent = `${settings.volume}%`;
 valSens.textContent = `${settings.sensitivity.toFixed(1)}x`;
-applyColorblindSetting();
+applyAccessibilitySettings();
+
+function showKeybindError(msg) {
+  if (!elKeybindError) return;
+  elKeybindError.textContent = `⚠ ${msg}`;
+  elKeybindError.classList.remove('hidden');
+}
+function hideKeybindError() {
+  if (elKeybindError) elKeybindError.classList.add('hidden');
+}
+function updateKeybindLabelsUI() {
+  const kb = settings.keybinds;
+  const mv = `${formatKeyCode(kb.moveUp)}${formatKeyCode(kb.moveLeft)}${formatKeyCode(kb.moveDown)}${formatKeyCode(kb.moveRight)}`;
+  const elMove = document.getElementById('kb-hint-move');
+  const elJump = document.getElementById('kb-hint-jump');
+  const elDash = document.getElementById('kb-hint-dash');
+  const elInt = document.getElementById('kb-hint-interact');
+  const elPulse = document.getElementById('kb-hint-pulse');
+  const elPause = document.getElementById('kb-hint-pause');
+  const elDashSkill = document.getElementById('skill-dash-key');
+  const elPulseSkill = document.getElementById('skill-pulse-key');
+  const elPauseBtn = document.getElementById('btn-pause-hud');
+  if (elMove) elMove.textContent = mv;
+  if (elJump) elJump.textContent = formatKeyCode(kb.jump);
+  if (elDash) elDash.textContent = formatKeyCode(kb.dash);
+  if (elInt) elInt.textContent = formatKeyCode(kb.interact);
+  if (elPulse) elPulse.textContent = formatKeyCode(kb.pulse);
+  if (elPause) elPause.textContent = formatKeyCode(kb.pause);
+  if (elDashSkill) elDashSkill.textContent = formatKeyCode(kb.dash);
+  if (elPulseSkill) elPulseSkill.textContent = formatKeyCode(kb.pulse);
+  if (elPauseBtn) elPauseBtn.textContent = `⏸ Dừng [${formatKeyCode(kb.pause)}]`;
+}
+function renderKeybindGrid() {
+  if (!elKeybindGrid) return;
+  elKeybindGrid.innerHTML = '';
+  for (const [act, label] of Object.entries(KEYBIND_LABELS)) {
+    const row = document.createElement('div');
+    row.className = 'keybind-row';
+    const span = document.createElement('span');
+    span.textContent = label;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-rebind' + (listeningAction === act ? ' listening' : '');
+    btn.dataset.action = act;
+    btn.textContent = listeningAction === act ? 'Nhấn phím...' : formatKeyCode(settings.keybinds[act]);
+    btn.addEventListener('click', () => {
+      listeningAction = act;
+      hideKeybindError();
+      renderKeybindGrid();
+    });
+    row.append(span, btn);
+    elKeybindGrid.appendChild(row);
+  }
+}
+updateKeybindLabelsUI();
+renderKeybindGrid();
 
 inputVol.addEventListener('input', () => {
   settings.volume = Number(inputVol.value);
@@ -1097,21 +1288,121 @@ inputSens.addEventListener('input', () => {
 });
 optColorblind.addEventListener('change', () => {
   settings.colorblind = Boolean(optColorblind.checked);
-  applyColorblindSetting();
+  applyAccessibilitySettings();
   saveSettings(settings);
 });
+optLargeText.addEventListener('change', () => {
+  settings.largeText = Boolean(optLargeText.checked);
+  applyAccessibilitySettings();
+  saveSettings(settings);
+});
+optReducedMotion.addEventListener('change', () => {
+  settings.reducedMotion = Boolean(optReducedMotion.checked);
+  applyAccessibilitySettings();
+  saveSettings(settings);
+});
+document.getElementById('btn-reset-keys').addEventListener('click', () => {
+  settings.keybinds = { ...DEFAULT_KEYBINDS };
+  listeningAction = null;
+  hideKeybindError();
+  saveSettings(settings);
+  updateKeybindLabelsUI();
+  renderKeybindGrid();
+});
+
+async function openLeaderboardScreen() {
+  const tbody = document.getElementById('leaderboard-tbody');
+  tbody.innerHTML = '<tr><td colspan="5">Đang tải...</td></tr>';
+  setScreen('leaderboard');
+  try {
+    const res = await fetch('/api/leaderboard');
+    const data = await res.json();
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    if (entries.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5">Chưa có kỷ lục nào được lưu.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '';
+    entries.forEach((e, idx) => {
+      const tr = document.createElement('tr');
+      const cells = [
+        String(idx + 1),
+        e.name,
+        String(e.score),
+        `${e.nights_won}/3`,
+        String(e.achieved_at || '').slice(0, 19).replace('T', ' '),
+      ];
+      cells.forEach((txt) => {
+        const td = document.createElement('td');
+        td.textContent = txt;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  } catch (_) {
+    tbody.innerHTML = '<tr><td colspan="5">Không thể tải bảng xếp hạng.</td></tr>';
+  }
+}
+
+document.getElementById('btn-menu-leaderboard').addEventListener('click', openLeaderboardScreen);
+document.getElementById('btn-leaderboard-close').addEventListener('click', () => setScreen('menu'));
 
 document.getElementById('btn-menu-settings').addEventListener('click', () => {
   settingsReturnTo = 'menu';
+  hideKeybindError();
+  renderKeybindGrid();
   setScreen('settings');
 });
 document.getElementById('btn-pause-settings').addEventListener('click', () => {
   settingsReturnTo = 'pause';
+  hideKeybindError();
+  renderKeybindGrid();
   setScreen('settings');
 });
 document.getElementById('btn-settings-close').addEventListener('click', () => {
+  listeningAction = null;
   saveSettings(settings);
   setScreen(settingsReturnTo);
+});
+
+const elLbSaveBox = document.getElementById('lb-save-box');
+const elLbNameInput = document.getElementById('lb-name-input');
+const btnLbSave = document.getElementById('btn-lb-save');
+const elLbFeedback = document.getElementById('lb-feedback');
+
+btnLbSave.addEventListener('click', async () => {
+  const name = elLbNameInput.value.trim();
+  if (!name || name.length < 3 || name.length > 12) {
+    elLbFeedback.textContent = '⚠ Tên phải dài từ 3 đến 12 ký tự.';
+    elLbFeedback.className = 'lb-feedback error';
+    return;
+  }
+  btnLbSave.disabled = true;
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        score: latestState ? Number(latestState.campaign_score || 0) : 0,
+        nights_won: latestState ? Number(latestState.nights_won || 0) : 0,
+        seed: latestState ? Number(latestState.seed || 42) : 42,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      elLbFeedback.textContent = `⚠ ${data.error || 'Tên không hợp lệ'}`;
+      elLbFeedback.className = 'lb-feedback error';
+      btnLbSave.disabled = false;
+      return;
+    }
+    elLbFeedback.textContent = `Đã lưu kỷ lục "${data.saved.name}" (${data.saved.score} điểm) vào Top 10!`;
+    elLbFeedback.className = 'lb-feedback';
+  } catch (_) {
+    elLbFeedback.textContent = '⚠ Lỗi kết nối khi lưu bảng xếp hạng.';
+    elLbFeedback.className = 'lb-feedback error';
+    btnLbSave.disabled = false;
+  }
 });
 
 document.getElementById('btn-mute-hud').addEventListener('click', () => {
@@ -1185,6 +1476,7 @@ function handleEvents(events, st) {
       if (lan) spawnBurst(lan.pos[0], lan.pos[1] + 2.4, lan.pos[2], getShadeAuraHex(), 8);
     } else if (ev.name === 'pulse') {
       sfx.pulse();
+      triggerCameraShake(0.14, 0.18);
       pulseFxTime = 0;
       pulseRing.position.set(st.player.pos[0], st.player.pos[1] + 0.15, st.player.pos[2]);
       pulseRing.visible = true;
@@ -1192,12 +1484,15 @@ function handleEvents(events, st) {
       showToast(cnt > 0 ? `✨ Tỏa Sáng làm choáng ${cnt} Bóng Mực!` : '✨ Tỏa Sáng!');
     } else if (ev.name === 'drifter_steal') {
       sfx.playerHit();
+      triggerScreenFlash();
       showToast(`💨 Gió Lạc ${ev.data.drifter_id} cướp ${ev.data.amount} đom đóm!`, true);
     } else if (ev.name === 'drifter_drop') {
       sfx.motePicked(4);
       showToast(`✨ Gió Lạc ${ev.data.drifter_id} làm rơi ${ev.data.amount} đom đóm!`);
     } else if (ev.name === 'player_hit') {
       sfx.playerHit();
+      triggerScreenFlash();
+      triggerCameraShake(0.32, 0.3);
       showToast(
         ev.data.by === 'fall'
           ? `🌊 Rơi khỏi đảo! Mất 1 Ngọn Lửa & ${ev.data.lost} đom đóm`
@@ -1207,6 +1502,7 @@ function handleEvents(events, st) {
       spawnBurst(st.player.pos[0], st.player.pos[1] + 1.0, st.player.pos[2], getShadeAuraHex(), 14);
     } else if (ev.name === 'shade_spawned') {
       sfx.shadeSpawned();
+      recentShadeAlert = { id: ev.data.id, expiresAt: performance.now() + 3500 };
     } else if (ev.name === 'paused') {
       if (activeScreen === 'play') setScreen('pause');
     } else if (ev.name === 'resumed') {
@@ -1435,6 +1731,31 @@ function syncVisualsFromState(st) {
     sfx.countdownTick();
   }
 
+  // Accessibility visual captions (Shade spawn, wind warning, final 10s, fuel < 30)
+  if (elCaptions) {
+    const caps = [];
+    if (recentShadeAlert && performance.now() < recentShadeAlert.expiresAt) {
+      caps.push(`🌑 Bóng Mực ${recentShadeAlert.id} vừa xuất hiện!`);
+    }
+    if (st.wind && st.wind.active) {
+      caps.push('🌪 Đang có gió mạnh!');
+    } else if (st.wind_warning) {
+      caps.push('🍃 Cảnh báo: Gió mạnh sắp thổi!');
+    }
+    if (st.session_started && st.state === 'playing' && secs <= 10 && secs > 0) {
+      caps.push(`⏳ Còn ${secs}s tới bình minh!`);
+    }
+    if (anyLowFuel && st.state === 'playing') {
+      caps.push('⚠ Đèn sắp cạn dầu (< 30%)!');
+    }
+    if (caps.length > 0 && activeScreen === 'play' && st.state === 'playing') {
+      elCaptions.textContent = caps.join(' · ');
+      elCaptions.classList.remove('hidden');
+    } else {
+      elCaptions.classList.add('hidden');
+    }
+  }
+
   // Dash & Pulse cooldown HUD
   if (st.player.charm_s > 0) {
     elDashCd.textContent = 'Không hồi chiêu!';
@@ -1473,15 +1794,16 @@ function syncVisualsFromState(st) {
       nearDist = d;
     }
   }
+  const intKey = formatKeyCode(settings.keybinds.interact);
   if (nearTarget && st.state === 'playing' && activeScreen === 'play') {
     if (!nearTarget.lit) {
       const req = nearTarget.ever_lit ? relightCost : cost;
       const act = nearTarget.ever_lit ? 'Thắp lại' : 'Thắp đèn';
-      elPrompt.textContent = `E — ${act} ${nearTarget.id} (${nearTarget.deposited}/${req})`;
+      elPrompt.textContent = `${intKey} — ${act} ${nearTarget.id} (${nearTarget.deposited}/${req})`;
     } else {
       const curFuel60 = typeof fuel60Map[nearTarget.id] === 'number' ? fuel60Map[nearTarget.id] : Math.round(nearTarget.fuel * 60);
       const needMotes = Math.ceil((fuelMax60 - curFuel60) / fuelPerMote60);
-      elPrompt.textContent = `E — Châm dầu ${nearTarget.id} (cần ${needMotes} · dầu ${nearTarget.fuel.toFixed(0)}%)`;
+      elPrompt.textContent = `${intKey} — Châm dầu ${nearTarget.id} (cần ${needMotes} · dầu ${nearTarget.fuel.toFixed(0)}%)`;
     }
     elPrompt.classList.remove('hidden');
   } else {
@@ -1514,7 +1836,49 @@ function syncVisualsFromState(st) {
     document.getElementById('modal-lanterns').textContent = `${st.lit_count} / ${st.lantern_total}`;
     document.getElementById('modal-flames').textContent = String(st.player.flames);
     btnNext.classList.toggle('hidden', !(st.state === 'won' && st.night < 3));
+
+    const allowLeaderboardSave = isFinalDawn || st.state === 'lost';
+    elLbSaveBox.classList.toggle('hidden', !allowLeaderboardSave);
+    if (allowLeaderboardSave) {
+      elLbFeedback.textContent = '';
+      elLbFeedback.className = 'lb-feedback hidden';
+      btnLbSave.disabled = false;
+    }
   }
+}
+
+function updateShadeSpawnArrow(st) {
+  if (!elShadeArrow || !st || st.state !== 'playing' || activeScreen !== 'play') {
+    if (elShadeArrow) elShadeArrow.classList.add('hidden');
+    return;
+  }
+  if (!recentShadeAlert || performance.now() >= recentShadeAlert.expiresAt) {
+    elShadeArrow.classList.add('hidden');
+    return;
+  }
+  const shade = (st.shades || []).find((s) => s.id === recentShadeAlert.id);
+  if (!shade) {
+    elShadeArrow.classList.add('hidden');
+    return;
+  }
+  const d = Math.hypot(shade.pos[0] - st.player.pos[0], shade.pos[2] - st.player.pos[2]);
+  projVec.set(shade.pos[0], shade.pos[1] + 0.5, shade.pos[2]).project(camera);
+  const behind = projVec.z > 1.0;
+  let sx = behind ? -projVec.x : projVec.x;
+  let sy = behind ? -projVec.y : projVec.y;
+  const len = Math.max(0.001, Math.hypot(sx, sy));
+  const nx = sx / len;
+  const ny = sy / len;
+  const edgeScale = 0.84 / Math.max(Math.abs(nx), Math.abs(ny));
+  const rawCx = (nx * edgeScale * 0.5 + 0.5) * window.innerWidth;
+  const rawCy = (-ny * edgeScale * 0.5 + 0.5) * window.innerHeight;
+  const cx = Math.max(180, Math.min(window.innerWidth - 180, rawCx));
+  const cy = Math.max(120, Math.min(window.innerHeight - 150, rawCy));
+  elShadeArrow.style.left = `${cx}px`;
+  elShadeArrow.style.top = `${cy}px`;
+  elShadeArrowTri.style.transform = `rotate(${(Math.atan2(nx, ny) * 180) / Math.PI}deg)`;
+  elShadeArrowLabel.textContent = `🌑 ${shade.id} (${Math.round(d)}m)`;
+  elShadeArrow.classList.remove('hidden');
 }
 
 // ---------- Off-Screen Nearest Unlit / Weak Lantern Arrow ----------
@@ -1606,23 +1970,28 @@ function animate(now) {
   }
 
   if (ws && ws.readyState === WebSocket.OPEN) {
-    const mz =
-      activeScreen === 'play'
-        ? (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0)
-        : 0;
-    const mx =
-      activeScreen === 'play'
-        ? (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0)
-        : 0;
+    const kb = settings.keybinds;
+    const bound = new Set(Object.values(kb));
+    const up = keys.has(kb.moveUp) || (!bound.has('ArrowUp') && keys.has('ArrowUp'));
+    const down = keys.has(kb.moveDown) || (!bound.has('ArrowDown') && keys.has('ArrowDown'));
+    const left = keys.has(kb.moveLeft) || (!bound.has('ArrowLeft') && keys.has('ArrowLeft'));
+    const right = keys.has(kb.moveRight) || (!bound.has('ArrowRight') && keys.has('ArrowRight'));
+    const mz = activeScreen === 'play' ? (up ? 1 : 0) - (down ? 1 : 0) : 0;
+    const mx = activeScreen === 'play' ? (left ? 1 : 0) - (right ? 1 : 0) : 0;
+    const jumpPressed = keys.has(kb.jump);
+    const interactPressed = keys.has(kb.interact);
+    const pulsePressed = keys.has(kb.pulse) || (!bound.has('KeyJ') && keys.has('KeyJ'));
+    const dashPressed =
+      keys.has(kb.dash) || (kb.dash === 'ShiftLeft' && !bound.has('ShiftRight') && keys.has('ShiftRight'));
     ws.send(
       JSON.stringify({
         type: 'input',
         move: [mx, mz],
         cam_yaw_deg: camYawDeg,
-        jump: activeScreen === 'play' && keys.has('Space'),
-        interact: activeScreen === 'play' && keys.has('KeyE'),
-        pulse: activeScreen === 'play' && (keys.has('KeyF') || keys.has('KeyJ')),
-        dash: activeScreen === 'play' && (keys.has('ShiftLeft') || keys.has('ShiftRight')),
+        jump: activeScreen === 'play' && jumpPressed,
+        interact: activeScreen === 'play' && interactPressed,
+        pulse: activeScreen === 'play' && pulsePressed,
+        dash: activeScreen === 'play' && dashPressed,
         pause: false,
       })
     );
@@ -1749,9 +2118,15 @@ function animate(now) {
     camTargetPos.lerp(desiredTargetPos, alpha);
   }
   camera.position.copy(camCurrentPos);
+  if (shakeTime > 0 && !settings.reducedMotion) {
+    shakeTime = Math.max(0, shakeTime - dt);
+    camera.position.x += (Math.random() - 0.5) * shakeIntensity;
+    camera.position.y += (Math.random() - 0.5) * shakeIntensity;
+  }
   camera.lookAt(camTargetPos);
 
   updateOffscreenArrow(latestState);
+  updateShadeSpawnArrow(latestState);
   renderer.render(scene, camera);
 }
 
