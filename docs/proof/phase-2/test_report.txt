@@ -1,0 +1,37 @@
+$ C:\Users\hiepq\AppData\Local\Programs\Python\Python313\python.exe -m unittest discover -s tests -v
+exit_code: 0 (elapsed: 7.88s)
+--- stdout ---
+
+--- stderr ---
+test_dawn_timeout_loss (test_headless_contract.TestHeadlessContract.test_dawn_timeout_loss) ... ok
+test_determinism_identical_bytes (test_headless_contract.TestHeadlessContract.test_determinism_identical_bytes) ... ok
+test_invalid_inputs_and_scenario_exit_code_2 (test_headless_contract.TestHeadlessContract.test_invalid_inputs_and_scenario_exit_code_2) ... ok
+test_pickup_deposit_win_scenario (test_headless_contract.TestHeadlessContract.test_pickup_deposit_win_scenario) ... ok
+test_pulse_and_safe_radius_scenario (test_headless_contract.TestHeadlessContract.test_pulse_and_safe_radius_scenario) ... ok
+test_shade_hit_and_no_flames_loss (test_headless_contract.TestHeadlessContract.test_shade_hit_and_no_flames_loss) ... ok
+test_snapshot_v1_1_schema_fields (test_headless_contract.TestHeadlessContract.test_snapshot_v1_1_schema_fields) ... ok
+test_ticks_zero_and_help_exit_zero (test_headless_contract.TestHeadlessContract.test_ticks_zero_and_help_exit_zero) ... ok
+test_unsupported_night_returns_nonzero (test_headless_contract.TestHeadlessContract.test_unsupported_night_returns_nonzero) ... ok
+test_charm_boosts_speed_removes_dash_cooldown_and_respawns (test_phase2_features.TestPhase2Features.test_charm_boosts_speed_removes_dash_cooldown_and_respawns) ... ok
+test_dash_air_altitude_hold_and_cooldown (test_phase2_features.TestPhase2Features.test_dash_air_altitude_hold_and_cooldown) ... ok
+test_drifter_steal_ignores_invuln_safe_zone_and_pulse_drops (test_phase2_features.TestPhase2Features.test_drifter_steal_ignores_invuln_safe_zone_and_pulse_drops) ... ok
+test_fall_off_island_ignores_invuln_respawns_and_loses_on_last_flame (test_phase2_features.TestPhase2Features.test_fall_off_island_ignores_invuln_respawns_and_loses_on_last_flame) ... ok
+test_night2_bridge_and_launch_pad (test_phase2_features.TestPhase2Features.test_night2_bridge_and_launch_pad) ... ok
+test_night3_full_21600_ticks_under_30s_and_deterministic (test_phase2_features.TestPhase2Features.test_night3_full_21600_ticks_under_30s_and_deterministic) ... ok
+test_night3_ramp_cliffs_launch_bell_tower_and_wind (test_phase2_features.TestPhase2Features.test_night3_ramp_cliffs_launch_bell_tower_and_wind) ... ok
+test_pause_freezes_sim_tick_timers_and_ttl (test_phase2_features.TestPhase2Features.test_pause_freezes_sim_tick_timers_and_ttl) ... ok
+test_safe_push_30_ticks_and_obstacle_knockback_stop (test_phase2_features.TestPhase2Features.test_safe_push_30_ticks_and_obstacle_knockback_stop) ... ok
+test_camera_yaw_rotation_and_normalization (test_sim_unit.TestGameSimUnit.test_camera_yaw_rotation_and_normalization) ... ok
+test_fractional_time_bonus_partial_deposit_capacity_and_pulse_miss (test_sim_unit.TestGameSimUnit.test_fractional_time_bonus_partial_deposit_capacity_and_pulse_miss) ... ok
+test_invuln_window_drop_ratio_and_recoil (test_sim_unit.TestGameSimUnit.test_invuln_window_drop_ratio_and_recoil) ... ok
+test_negative_zero_rounding_and_jump_no_auto_rejump (test_sim_unit.TestGameSimUnit.test_negative_zero_rounding_and_jump_no_auto_rejump) ... ok
+test_pickup_radius_and_height_tolerance_and_landing (test_sim_unit.TestGameSimUnit.test_pickup_radius_and_height_tolerance_and_landing) ... ok
+test_random_shades_spawn_at_tick_300_deterministically (test_sim_unit.TestGameSimUnit.test_random_shades_spawn_at_tick_300_deterministically) ... ok
+test_rising_edge_for_interact_and_pulse (test_sim_unit.TestGameSimUnit.test_rising_edge_for_interact_and_pulse) ... ok
+test_safe_radius_blocks_active_shades_only_for_lit_lanterns (test_sim_unit.TestGameSimUnit.test_safe_radius_blocks_active_shades_only_for_lit_lanterns) ... ok
+test_scenario_setup_emits_no_events_or_score (test_sim_unit.TestGameSimUnit.test_scenario_setup_emits_no_events_or_score) ... ok
+
+----------------------------------------------------------------------
+Ran 27 tests in 7.700s
+
+OK

@@ -1,6 +1,7 @@
 {
   "frames": [
-    { "tick": 60, "pulse": true },
-    { "tick": 61, "pulse": false }
+    { "tick": 60, "move": [0, 1] },
+    { "tick": 85, "move": [0, 0], "pulse": true },
+    { "tick": 86, "pulse": false }
   ]
 }

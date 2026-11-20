@@ -1,0 +1,5 @@
+Command: python -m src.headless --seed 12345 --night 3 --ticks 21600 --snapshot-every 10
+Run 1 elapsed : 1.713 s
+Run 2 elapsed : 1.688 s
+Budget        : <= 30.000 s
+Result        : PASS (1.713 s <= 30.000 s)

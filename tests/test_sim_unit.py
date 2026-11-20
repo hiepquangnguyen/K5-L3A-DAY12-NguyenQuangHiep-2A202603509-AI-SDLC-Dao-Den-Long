@@ -1,11 +1,11 @@
-"""Unit tests for GameSim 60Hz simulation rules and Test Contract v1.0 invariants."""
+"""Unit tests for GameSim 60Hz rules & Test Contract v1.1 (updated Phase 1 regression)."""
 
 from __future__ import annotations
 
 import math
 import unittest
 
-from src.sim.config import DT, load_contract
+from src.sim.config import load_contract
 from src.sim.engine import GameSim, InputState, dist_xz
 
 
@@ -15,7 +15,7 @@ class TestGameSimUnit(unittest.TestCase):
         self.tuning = self.contract["tuning"]
 
     def test_camera_yaw_rotation_and_normalization(self) -> None:
-        speed = float(self.tuning["player_speed"])
+        speed = float(self.tuning["player_speed"])  # 6.0 m/s
         cases = [
             (0.0, [0.0, 1.0], (0.0, 1.0)),
             (90.0, [0.0, 1.0], (1.0, 0.0)),
@@ -35,6 +35,7 @@ class TestGameSimUnit(unittest.TestCase):
             self.assertAlmostEqual(sim.player.z, ez * speed, places=4)
 
     def test_rising_edge_for_interact_and_pulse(self) -> None:
+        # Hold interact=True and pulse=True across multiple ticks -> each triggers only once
         sim = GameSim(
             seed=2,
             scenario={
@@ -42,15 +43,28 @@ class TestGameSimUnit(unittest.TestCase):
                 "random_motes": False,
                 "random_shades": False,
                 "motes": [],
-                "shades": [{"id": "S1", "pos": [0, 0, 28]}],
-                "lanterns": [{"id": "L1", "pos": [0, 0, 25], "deposited": 0, "lit": False}],
+                "shades": [{"id": "S1", "pos": [0, 0, 27], "state": "chase"}],
+                "lanterns": [{"id": "L1", "pos": [0, 0, 25], "deposited": 4, "lit": False}],
             },
             contract=self.contract,
         )
-        # Hold interact=True for 5 ticks -> should deposit only once on tick 1
+        # First tick: interact deposits 6 (needed=6, carried=10 -> 4 left), pulse spends 3 -> 1 left
+        # Use separate test with carried=10 and lit L1 or partial deposit of 4 so carried remains >= 3
+        sim2 = GameSim(
+            seed=2,
+            scenario={
+                "player": {"pos": [0, 0, 24], "carried": 10, "flames": 3},
+                "random_motes": False,
+                "random_shades": False,
+                "motes": [],
+                "shades": [{"id": "S1", "pos": [0, 0, 27], "state": "chase"}],
+                "lanterns": [{"id": "L1", "pos": [0, 0, 25], "deposited": 8, "lit": False}],
+            },
+            contract=self.contract,
+        )
         all_events = []
         for _ in range(5):
-            all_events.extend(sim.step(InputState(interact=True, pulse=True)))
+            all_events.extend(sim2.step(InputState(interact=True, pulse=True)))
 
         deposits = [e for e in all_events if e["name"] == "deposit"]
         pulses = [e for e in all_events if e["name"] == "pulse"]
@@ -59,38 +73,40 @@ class TestGameSimUnit(unittest.TestCase):
         self.assertEqual(len(pulses), 1)
         self.assertEqual(pulses[0]["tick"], 1)
 
-        # Wait out pulse cooldown (4s = 240 ticks) while still holding pulse=True -> still no second pulse
-        for _ in range(250):
-            ev = sim.step(InputState(interact=True, pulse=True))
+        # Wait out pulse cooldown (3s = 180 ticks) while holding pulse=True -> no second pulse
+        for _ in range(190):
+            ev = sim2.step(InputState(interact=True, pulse=True))
             self.assertEqual([e for e in ev if e["name"] == "pulse"], [])
 
-        # Drop pulse to False, then raise back to True -> triggers second pulse
-        sim.step(InputState(pulse=False))
-        ev2 = sim.step(InputState(pulse=True))
+        # Release and re-press pulse -> carried is 10 - 2 - 3 = 5 >= 3, triggers second pulse
+        sim2.step(InputState(pulse=False))
+        ev2 = sim2.step(InputState(pulse=True))
         self.assertEqual(len([e for e in ev2 if e["name"] == "pulse"]), 1)
 
-    def test_xz_distance_ignores_jump_height_and_lands_at_zero(self) -> None:
+    def test_pickup_radius_and_height_tolerance_and_landing(self) -> None:
+        # pickup_radius = 1.0m, |py - my| <= 1.5m; jump v0=7.0 -> max height = 1.225m <= 1.5m
         sim = GameSim(
             seed=3,
             scenario={
                 "player": {"pos": [0, 0, 0], "carried": 0, "flames": 3},
                 "random_motes": False,
                 "random_shades": False,
-                "motes": [[0, 0, 1.99]],
+                "motes": [[0, 0, 0.99]],
                 "shades": [],
             },
             contract=self.contract,
         )
         ev_jump = sim.step(InputState(jump=True))
         self.assertGreater(sim.player.y, 0.0)
-        # Mote at z=1.99 <= pickup_radius(2.0) is picked despite player being airborne
+        self.assertFalse(sim.player.grounded)
         self.assertEqual(len([e for e in ev_jump if e["name"] == "mote_picked"]), 1)
+        # Standardized scoring: pickup itself awards 0 points
+        self.assertEqual(sim.score, 0)
 
-        # Step until player lands back at Y = 0
         for _ in range(120):
             sim.step(InputState(jump=False))
         self.assertEqual(sim.player.y, 0.0)
-        self.assertEqual(sim.player.vy, 0.0)
+        self.assertTrue(sim.player.grounded)
 
     def test_scenario_setup_emits_no_events_or_score(self) -> None:
         sim = GameSim(
@@ -98,10 +114,7 @@ class TestGameSimUnit(unittest.TestCase):
             scenario={
                 "random_motes": False,
                 "random_shades": False,
-                "lanterns": [
-                    {"id": "L1", "lit": True},
-                    {"id": "L2", "lit": True},
-                ],
+                "lanterns": [{"id": "L1", "lit": True}, {"id": "L2", "lit": True}],
             },
             contract=self.contract,
         )
@@ -111,7 +124,7 @@ class TestGameSimUnit(unittest.TestCase):
         self.assertTrue(sim.lanterns[1].lit)
         self.assertEqual(sim.lanterns[0].deposited, self.tuning["lantern_cost"])
 
-    def test_invuln_window_and_drop_ratio(self) -> None:
+    def test_invuln_window_drop_ratio_and_recoil(self) -> None:
         sim = GameSim(
             seed=5,
             scenario={
@@ -119,27 +132,24 @@ class TestGameSimUnit(unittest.TestCase):
                 "random_motes": False,
                 "random_shades": False,
                 "motes": [],
-                "shades": [{"id": "S1", "pos": [0, 0, 0.5]}],
+                "shades": [{"id": "S1", "pos": [0, 0, 0.5], "state": "chase"}],
             },
             contract=self.contract,
         )
         hits = []
-        # Step 60 ticks (1.0s < invuln_s=1.5s) -> only 1 hit
         for _ in range(60):
             hits.extend(e for e in sim.step(InputState()) if e["name"] == "player_hit")
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0]["data"]["dropped"], 2)  # floor(5 * 0.5)
         self.assertEqual(sim.player.carried, 3)
         self.assertEqual(sim.player.flames, 2)
-
-        # Step another 40 ticks (total 100 > 90 invuln ticks) -> second hit occurs
-        for _ in range(40):
-            hits.extend(e for e in sim.step(InputState()) if e["name"] == "player_hit")
-        self.assertEqual(len(hits), 2)
-        self.assertEqual(sim.player.flames, 1)
+        self.assertEqual(sim.shades[0].state, "recoil")
+        # 2 dropped motes exist on ground
+        dropped = [m for m in sim.motes if m.kind == "dropped"]
+        self.assertEqual(len(dropped), 2)
 
     def test_safe_radius_blocks_active_shades_only_for_lit_lanterns(self) -> None:
-        safe_r = float(self.tuning["safe_radius"])
+        safe_r = float(self.tuning["safe_radius"])  # 6.0m
         sim = GameSim(
             seed=6,
             scenario={
@@ -147,32 +157,33 @@ class TestGameSimUnit(unittest.TestCase):
                 "random_motes": False,
                 "random_shades": False,
                 "motes": [],
-                "shades": [{"id": "S1", "pos": [0, 0, 27]}],
+                "shades": [{"id": "S1", "pos": [0, 0, 32], "state": "chase"}],
                 "lanterns": [{"id": "L1", "pos": [0, 0, 25], "lit": True}],
             },
             contract=self.contract,
         )
-        for _ in range(30):
+        for _ in range(40):
             sim.step(InputState())
             d = dist_xz(sim.shades[0].x, sim.shades[0].z, 0.0, 25.0)
             self.assertGreaterEqual(d, safe_r)
         self.assertEqual(sim.player.flames, 3)
 
-    def test_random_shades_deterministic_spawn_event(self) -> None:
+    def test_random_shades_spawn_at_tick_300_deterministically(self) -> None:
         sim = GameSim(
             seed=42,
-            scenario={"random_motes": False, "random_shades": True, "shades": []},
+            night=1,
+            scenario={"random_motes": False, "random_shades": True},
             contract=self.contract,
         )
         spawns = []
-        for _ in range(1200):
+        for _ in range(300):
             spawns.extend(e for e in sim.step(InputState()) if e["name"] == "shade_spawned")
-        self.assertEqual(len(spawns), 1)
-        self.assertEqual(spawns[0]["tick"], 1200)
-        self.assertEqual(spawns[0]["data"], {"id": "S1"})
+        self.assertEqual(len(spawns), 2)
+        self.assertEqual([s["tick"] for s in spawns], [300, 300])
+        self.assertEqual([s["data"]["id"] for s in spawns], ["S1", "S2"])
+        self.assertEqual(sim.shades[0].state, "spawning")
 
     def test_fractional_time_bonus_partial_deposit_capacity_and_pulse_miss(self) -> None:
-        # Fractional time_left_s=1.4 -> 24 ticks -> 1.0s left -> 1 * per_second_left
         sim = GameSim(
             seed=7,
             scenario={
@@ -182,7 +193,7 @@ class TestGameSimUnit(unittest.TestCase):
                 "motes": [],
                 "shades": [],
                 "lanterns": [
-                    {"id": "L1", "pos": [0, 0, 25], "deposited": 2, "lit": False},
+                    {"id": "L1", "pos": [0, 0, 25], "deposited": 7, "lit": False},
                     {"id": "L2", "lit": True},
                     {"id": "L3", "lit": True},
                     {"id": "L4", "lit": True},
@@ -198,8 +209,8 @@ class TestGameSimUnit(unittest.TestCase):
         self.assertEqual(sim.tick, 24)
         self.assertEqual(sim.state, "won")
         self.assertEqual([e["name"] for e in ev], ["deposit", "lantern_lit", "game_over"])
-        # 200 (lantern) + 1*2 (time_left_s=1.0) + 2*100 (flames) = 402
-        self.assertEqual(sim.score, 402)
+        # 3*10 (deposited) + 100 (lantern) + 1*2 (time_left=1.0) + 2*50 (flames) = 232
+        self.assertEqual(sim.score, 232)
 
         # Carry capacity cap & pulse miss (stunned_ids == [])
         sim2 = GameSim(
@@ -214,17 +225,23 @@ class TestGameSimUnit(unittest.TestCase):
             contract=self.contract,
         )
         ev_cap = sim2.step(InputState(pulse=True))
-        self.assertEqual([e["name"] for e in ev_cap], ["pulse"])
-        self.assertEqual(ev_cap[0]["data"], {"stunned_ids": []})
-        # After spending pulse_cost(2) -> carried=8, next tick mote is picked -> carried=9
+        self.assertEqual([e["name"] for e in ev_cap], ["night_start", "pulse"])
+        self.assertEqual(ev_cap[1]["data"], {"stunned_ids": []})
+        # carried is now 10 - 3 = 7, next tick picks mote -> 8
         ev_pick = sim2.step(InputState(pulse=False))
         self.assertEqual([e["name"] for e in ev_pick], ["mote_picked"])
-        self.assertEqual(sim2.player.carried, 9)
+        self.assertEqual(sim2.player.carried, 8)
 
     def test_negative_zero_rounding_and_jump_no_auto_rejump(self) -> None:
         sim = GameSim(
             seed=9,
-            scenario={"player": {"pos": [-0.0, 0.0, -0.0]}, "random_motes": False, "random_shades": False, "motes": [], "shades": []},
+            scenario={
+                "player": {"pos": [-0.0, 0.0, -0.0]},
+                "random_motes": False,
+                "random_shades": False,
+                "motes": [],
+                "shades": [],
+            },
             contract=self.contract,
         )
         snap = sim.snapshot()
@@ -232,7 +249,6 @@ class TestGameSimUnit(unittest.TestCase):
         self.assertNotEqual(math.copysign(1.0, snap["player"]["pos"][0]), -1.0)
 
         sim.step(InputState(jump=True))
-        # Hold jump=True all the way past landing -> must NOT auto-jump a second time
         for _ in range(90):
             sim.step(InputState(jump=True))
         self.assertEqual(sim.player.y, 0.0)

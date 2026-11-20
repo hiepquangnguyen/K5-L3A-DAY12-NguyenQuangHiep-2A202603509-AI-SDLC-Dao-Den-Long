@@ -1,4 +1,4 @@
-"""End-to-end Test Contract v1.0 headless CLI tests."""
+"""End-to-end Test Contract v1.1 headless CLI tests."""
 
 from __future__ import annotations
 
@@ -29,6 +29,48 @@ def parse_jsonl(path: Path) -> list[dict]:
 
 
 class TestHeadlessContract(unittest.TestCase):
+    def test_snapshot_v1_1_schema_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "schema.jsonl"
+            proc = run_headless("--seed", "1", "--night", "2", "--ticks", "0", "--out", str(out))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            snap = parse_jsonl(out)[0]
+            for key in (
+                "type",
+                "tick",
+                "sim_tick",
+                "night",
+                "state",
+                "time_left_s",
+                "score",
+                "wind",
+                "player",
+                "lanterns",
+                "shades",
+                "motes_active",
+                "motes",
+                "drifters",
+                "charms",
+            ):
+                self.assertIn(key, snap)
+            self.assertEqual(snap["night"], 2)
+            for pkey in (
+                "pos",
+                "vel",
+                "grounded",
+                "flames",
+                "carried",
+                "invuln",
+                "dash_cd_s",
+                "pulse_cd_s",
+                "charm_s",
+            ):
+                self.assertIn(pkey, snap["player"])
+            self.assertEqual(len(snap["lanterns"]), 6)
+            self.assertEqual(len(snap["charms"]), 1)
+            self.assertIn("kind", snap["motes"][0])
+            self.assertIn("ttl_s", snap["motes"][0])
+
     def test_pickup_deposit_win_scenario(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "win.jsonl"
@@ -57,19 +99,20 @@ class TestHeadlessContract(unittest.TestCase):
 
             events = [r for r in rows if r["type"] == "event"]
             names = [e["name"] for e in events]
-            self.assertEqual(names.count("mote_picked"), 5)
+            self.assertEqual(events[0]["name"], "night_start")
+            self.assertEqual(names.count("mote_picked"), 10)
             self.assertIn("deposit", names)
             self.assertIn("lantern_lit", names)
             self.assertEqual(events[-1]["name"], "game_over")
             self.assertEqual(events[-1]["data"], {"result": "won", "reason": "all_lit"})
-            self.assertEqual(events[-1]["tick"], 61)
+            self.assertEqual(events[-1]["tick"], 106)
 
             end = rows[-1]
             self.assertEqual(end["type"], "end")
             self.assertEqual(end["state"], "won")
-            self.assertEqual(end["ticks"], 61)
-            # 5*10 + 200 + floor(300 - 61/60)*2 + 3*100 = 50 + 200 + 298*2 + 300 = 1146
-            self.assertEqual(end["score"], 1146)
+            self.assertEqual(end["ticks"], 106)
+            # 10*10 + 100 + floor(300 - 106/60)*2 + 3*50 = 100 + 100 + 596 + 150 = 946
+            self.assertEqual(end["score"], 946)
 
     def test_pulse_and_safe_radius_scenario(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -84,7 +127,7 @@ class TestHeadlessContract(unittest.TestCase):
                 "--inputs",
                 str(SCENARIOS / "pulse_and_safe_radius.inputs.json"),
                 "--ticks",
-                "260",
+                "220",
                 "--out",
                 str(out),
                 "--snapshot-every",
@@ -93,18 +136,19 @@ class TestHeadlessContract(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             rows = parse_jsonl(out)
             events = [r for r in rows if r["type"] == "event"]
-            self.assertEqual([e["name"] for e in events], ["pulse"])
-            self.assertEqual(events[0]["tick"], 61)
-            self.assertEqual(events[0]["data"], {"stunned_ids": ["S1"]})
+            self.assertEqual([e["name"] for e in events], ["night_start", "pulse"])
+            self.assertEqual(events[1]["tick"], 86)
+            self.assertEqual(events[1]["data"], {"stunned_ids": ["S1"]})
 
             snaps = {s["tick"]: s for s in rows if s["type"] == "snapshot"}
-            # Tick 60 (pre-pulse): shade blocked by safe_radius at state "avoid"
-            self.assertEqual(snaps[60]["shades"][0]["state"], "avoid")
-            # Tick 70 & Tick 240: shade stunned
-            self.assertEqual(snaps[70]["shades"][0]["state"], "stunned")
-            self.assertEqual(snaps[240]["shades"][0]["state"], "stunned")
-            # Tick 250: stun (3s = 180 ticks, ended at tick 241) has ended
-            self.assertNotEqual(snaps[250]["shades"][0]["state"], "stunned")
+            # Tick 60: shade blocked at safe_radius = 6.0m from L1(0,0,25)
+            self.assertGreaterEqual(snaps[60]["shades"][0]["pos"][2], 31.0)
+            self.assertEqual(snaps[60]["player"]["flames"], 3)
+            # Tick 90 & Tick 200: shade stunned (120 ticks from 86 -> 205)
+            self.assertEqual(snaps[90]["shades"][0]["state"], "stunned")
+            self.assertEqual(snaps[200]["shades"][0]["state"], "stunned")
+            # Tick 210: stun ended
+            self.assertNotEqual(snaps[210]["shades"][0]["state"], "stunned")
 
     def test_shade_hit_and_no_flames_loss(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -131,6 +175,7 @@ class TestHeadlessContract(unittest.TestCase):
             self.assertEqual(
                 [(e["name"], e["data"]) for e in events],
                 [
+                    ("night_start", {"night": 1}),
                     ("player_hit", {"by": "shade", "flames": 0, "dropped": 2}),
                     ("game_over", {"result": "lost", "reason": "no_flames"}),
                 ],
@@ -156,41 +201,44 @@ class TestHeadlessContract(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             rows = parse_jsonl(out)
             events = [r for r in rows if r["type"] == "event"]
-            self.assertEqual(len(events), 1)
-            self.assertEqual(events[0]["tick"], 60)
-            self.assertEqual(events[0]["name"], "game_over")
-            self.assertEqual(events[0]["data"], {"result": "lost", "reason": "dawn"})
+            self.assertEqual([e["name"] for e in events], ["night_start", "game_over"])
+            self.assertEqual(events[1]["tick"], 60)
+            self.assertEqual(events[1]["data"], {"result": "lost", "reason": "dawn"})
             self.assertEqual(rows[-1], {"type": "end", "ticks": 60, "state": "lost", "score": 0})
 
     def test_determinism_identical_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            out1 = Path(td) / "d1.jsonl"
-            out2 = Path(td) / "d2.jsonl"
-            for out in (out1, out2):
-                proc = run_headless(
-                    "--seed",
-                    "12345",
-                    "--night",
-                    "1",
-                    "--ticks",
-                    "1500",
-                    "--out",
-                    str(out),
-                )
-                self.assertEqual(proc.returncode, 0, proc.stderr)
-            self.assertEqual(out1.read_bytes(), out2.read_bytes())
+            for night in (1, 3):
+                out1 = Path(td) / f"d{night}_1.jsonl"
+                out2 = Path(td) / f"d{night}_2.jsonl"
+                for out in (out1, out2):
+                    proc = run_headless(
+                        "--seed",
+                        "12345",
+                        "--night",
+                        str(night),
+                        "--ticks",
+                        "1800",
+                        "--out",
+                        str(out),
+                    )
+                    self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual(out1.read_bytes(), out2.read_bytes())
 
     def test_invalid_inputs_and_scenario_exit_code_2(self) -> None:
         bad_inputs_cases = [
-            '{"frames": [{"tick": 5}, {"tick": 5}]}',  # duplicate tick
-            '{"frames": [{"tick": 10}, {"tick": 3}]}',  # decreasing tick
-            '{"frames": [{"tick": 0, "move": [1.5, 0]}]}',  # move out of [-1, 1]
+            '{"frames": [{"tick": 5}, {"tick": 5}]}',
+            '{"frames": [{"tick": 10}, {"tick": 3}]}',
+            '{"frames": [{"tick": 0, "move": [1.5, 0]}]}',
+            '{"frames": [{"tick": 0, "pause": "yes"}]}',
             "{not valid json",
         ]
         bad_scenario_cases = [
             '{"lanterns": [{"id": "L99", "lit": true}]}',
             '{"random_motes": "yes"}',
             '{"player": {"pos": [0, 0]}}',
+            '{"shades": [{"pos": [0, 0, 0], "state": "avoid"}]}',
+            '{"drifters": [{"pos": [0, 0, 0], "state": "bad"}]}',
         ]
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "bad.jsonl"
@@ -212,7 +260,6 @@ class TestHeadlessContract(unittest.TestCase):
                 self.assertEqual(proc.returncode, 2, f"Expected exit 2 for bad scenario #{idx}")
                 self.assertTrue(proc.stderr.strip())
 
-            # Non-UTF-8 bytes & huge integer overflow (10**400) -> exit code 2
             bin_bad = Path(td) / "binary.json"
             bin_bad.write_bytes(b"\xff\xfe\x00\x80")
             proc_bin = run_headless(
@@ -244,8 +291,8 @@ class TestHeadlessContract(unittest.TestCase):
 
     def test_unsupported_night_returns_nonzero(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            out = Path(td) / "night2.jsonl"
-            proc = run_headless("--seed", "1", "--night", "2", "--ticks", "10", "--out", str(out))
+            out = Path(td) / "night4.jsonl"
+            proc = run_headless("--seed", "1", "--night", "4", "--ticks", "10", "--out", str(out))
             self.assertNotEqual(proc.returncode, 0)
             self.assertTrue(proc.stderr.strip())
 

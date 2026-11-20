@@ -3,6 +3,6 @@
   "random_motes": false,
   "random_shades": false,
   "motes": [],
-  "shades": [{ "id": "S1", "pos": [0, 0, 2] }],
+  "shades": [{ "id": "S1", "pos": [0, 0, 1.8], "state": "chase" }],
   "time_left_s": 300
 }
