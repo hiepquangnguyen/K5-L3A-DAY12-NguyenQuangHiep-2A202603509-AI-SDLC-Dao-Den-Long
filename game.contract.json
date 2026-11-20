@@ -1,6 +1,6 @@
 {
   "contract_version": "1.2",
-  "team": "TODO-mssv-ho-ten",
+  "team": "2A202603509-NguyenQuangHiep",
   "build_cmd": "python3 -m compileall -q src",
   "run_cmd": "python3 -m src.play",
   "headless_cmd": "python3 -m src.headless",
