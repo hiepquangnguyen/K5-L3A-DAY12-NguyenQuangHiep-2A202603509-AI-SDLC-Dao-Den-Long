@@ -1287,7 +1287,7 @@ class GameSim:
                     weak_ranked.sort(key=lambda item: (item[0], item[1], item[2]))
                     d_weak, _, _, weak_target = weak_ranked[0]
                     shade.target_lantern_id = weak_target.id
-                    if d_weak <= 2.0:
+                    if d_weak <= 2.0 and not shade.just_recovered_stun:
                         shade.state = "drain"
                         shade.drain_ticks = 0
                         continue
@@ -1352,6 +1352,7 @@ class GameSim:
             if (
                 weak_target is not None
                 and shade.state == "wander"
+                and not shade.just_recovered_stun
                 and dist_xz(shade.x, shade.z, weak_target.x, weak_target.z) <= 2.0
             ):
                 shade.state = "drain"

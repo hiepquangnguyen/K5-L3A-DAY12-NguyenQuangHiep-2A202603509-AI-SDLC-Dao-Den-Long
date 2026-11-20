@@ -393,19 +393,41 @@ class TestPhase2Features(unittest.TestCase):
             sim_obs.step(InputState())
         self.assertGreaterEqual(math.hypot(sim_obs.shades[0].x, sim_obs.shades[0].z), 2.0 - 1e-4)
 
-    def test_night3_full_21600_ticks_under_30s_and_deterministic(self) -> None:
+    def test_night3_dawn_18000_and_stress_21600_ticks_under_30s_and_deterministic(self) -> None:
+        # Migrated from v1.1 (CHANGELOG 1.2.0): Night 3 duration changed 360s -> 300s (18,000 ticks);
+        # verify both natural 18,000-tick dawn run and a full 21,600-tick stress run via scenario.
         with tempfile.TemporaryDirectory() as td:
             out1 = Path(td) / "perf1.jsonl"
             out2 = Path(td) / "perf2.jsonl"
             t0 = time.perf_counter()
-            p1 = run_headless("--seed", "777", "--night", "3", "--ticks", "21600", "--out", str(out1))
-            elapsed = time.perf_counter() - t0
+            p1 = run_headless("--seed", "777", "--night", "3", "--ticks", "18000", "--out", str(out1))
+            elapsed_dawn = time.perf_counter() - t0
             self.assertEqual(p1.returncode, 0, p1.stderr)
-            self.assertLessEqual(elapsed, 30.0, f"Night 3 21,600 ticks took {elapsed:.2f}s > 30s")
+            self.assertLessEqual(elapsed_dawn, 30.0, f"Night 3 18,000 ticks took {elapsed_dawn:.2f}s > 30s")
 
-            p2 = run_headless("--seed", "777", "--night", "3", "--ticks", "21600", "--out", str(out2))
+            p2 = run_headless("--seed", "777", "--night", "3", "--ticks", "18000", "--out", str(out2))
             self.assertEqual(p2.returncode, 0, p2.stderr)
             self.assertEqual(out1.read_bytes(), out2.read_bytes())
+
+            sc_21600 = Path(td) / "stress_21600.json"
+            sc_21600.write_text('{"time_left_s": 360.0}', encoding="utf-8")
+            out_stress = Path(td) / "stress.jsonl"
+            t1 = time.perf_counter()
+            ps = run_headless(
+                "--seed",
+                "777",
+                "--night",
+                "3",
+                "--scenario",
+                str(sc_21600),
+                "--ticks",
+                "21600",
+                "--out",
+                str(out_stress),
+            )
+            elapsed_stress = time.perf_counter() - t1
+            self.assertEqual(ps.returncode, 0, ps.stderr)
+            self.assertLessEqual(elapsed_stress, 30.0, f"21,600-tick stress took {elapsed_stress:.2f}s > 30s")
 
     def test_audit_regressions_ramp_side_idle_drifter_charm_speed_and_outcome_order(self) -> None:
         # 1. Night 3 ramp side-wall blocks entering underneath from Tier 0 (s=26, t=1.6 -> t<1.5)
@@ -468,7 +490,7 @@ class TestPhase2Features(unittest.TestCase):
         sim_charm.step(InputState())  # tick 2701 -> 2700 ticks elapsed since pickup at tick 1
         self.assertTrue(sim_charm.charms[0].available)
 
-        # 4. Same-tick win/loss precedence: no_flames > all_lit > dawn
+        # 4. Same-tick win/loss precedence (v1.2): no_flames > dawn_survived > dawn
         sim_prec = GameSim(
             seed=19,
             night=1,
@@ -488,10 +510,32 @@ class TestPhase2Features(unittest.TestCase):
             },
             contract=self.contract,
         )
-        # All lit on same tick as dawn -> won (all_lit > dawn)
+        # All lit on same tick as dawn -> won (reason: dawn_survived)
         ev_won = sim_prec.step(InputState(interact=True))
         self.assertEqual(sim_prec.state, "won")
-        self.assertEqual(ev_won[-1]["data"], {"result": "won", "reason": "all_lit"})
+        self.assertEqual(ev_won[-1]["data"], {"result": "won", "reason": "dawn_survived"})
+
+        # Losing last flame on exact dawn tick with >= 3/5 lit -> lost (no_flames > dawn_survived)
+        sim_loss_first = GameSim(
+            seed=20,
+            night=1,
+            scenario={
+                "player": {"pos": [0, 0, 0], "carried": 0, "flames": 1},
+                "random_motes": False,
+                "random_shades": False,
+                "lanterns": [
+                    {"id": "L1", "lit": True},
+                    {"id": "L2", "lit": True},
+                    {"id": "L3", "lit": True},
+                ],
+                "shades": [{"id": "S1", "pos": [0, 0, 0.5], "state": "chase"}],
+                "time_left_s": 1.0 / 60.0,
+            },
+            contract=self.contract,
+        )
+        ev_lost = sim_loss_first.step(InputState())
+        self.assertEqual(sim_loss_first.state, "lost")
+        self.assertEqual(ev_lost[-1]["data"], {"result": "lost", "reason": "no_flames"})
 
 
 if __name__ == "__main__":

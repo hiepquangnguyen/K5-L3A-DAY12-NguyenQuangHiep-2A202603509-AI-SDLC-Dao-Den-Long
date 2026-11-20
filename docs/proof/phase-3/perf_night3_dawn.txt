@@ -1,0 +1,10 @@
+Command (dawn): python -m src.headless --seed 12345 --night 3 --ticks 18000 --snapshot-every 10
+Run 1 elapsed : 3.895 s
+Run 2 elapsed : 3.945 s
+Budget        : <= 30.000 s
+Result        : PASS (3.945 s <= 30.000 s)
+
+Command (stress): python -m src.headless --seed 12345 --night 3 --scenario <time_left_s=360> --ticks 21600 --snapshot-every 10
+Elapsed         : 4.014 s
+Budget          : <= 30.000 s
+Result          : PASS (4.014 s <= 30.000 s)

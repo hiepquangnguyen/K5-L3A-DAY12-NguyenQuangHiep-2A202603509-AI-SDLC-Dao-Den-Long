@@ -1,4 +1,4 @@
-"""Unit tests for GameSim 60Hz rules & Test Contract v1.1 (updated Phase 1 regression)."""
+"""Unit tests for GameSim 60Hz rules & Test Contract v1.2 (updated Phase 1-2 regressions)."""
 
 from __future__ import annotations
 
@@ -183,7 +183,9 @@ class TestGameSimUnit(unittest.TestCase):
         self.assertEqual([s["data"]["id"] for s in spawns], ["S1", "S2"])
         self.assertEqual(sim.shades[0].state, "spawning")
 
-    def test_fractional_time_bonus_partial_deposit_capacity_and_pulse_miss(self) -> None:
+    def test_partial_deposit_dawn_win_scoring_capacity_and_pulse_miss(self) -> None:
+        # Migrated from v1.1 (CHANGELOG 1.2.0): TICKET-03 removed early all_lit win and per_second_left.
+        # Lighting L1 keeps playing until dawn (sim_tick=84, time_left_s=0.0), then wins with dawn_survived.
         sim = GameSim(
             seed=7,
             scenario={
@@ -207,10 +209,22 @@ class TestGameSimUnit(unittest.TestCase):
             sim.step(InputState())
         ev = sim.step(InputState(interact=True))
         self.assertEqual(sim.tick, 24)
+        self.assertEqual(sim.state, "playing")
+        self.assertEqual([e["name"] for e in ev], ["deposit", "lantern_lit"])
+        self.assertEqual(ev[1]["data"], {"lantern_id": "L1", "relight": False})
+        self.assertEqual(sim.carry_capacity, 12)
+        # 3*5 (deposited) + 100 (first light) = 115
+        self.assertEqual(sim.score, 115)
+
+        for _ in range(59):
+            sim.step(InputState())
+        ev_dawn = sim.step(InputState())
+        self.assertEqual(sim.tick, 84)
         self.assertEqual(sim.state, "won")
-        self.assertEqual([e["name"] for e in ev], ["deposit", "lantern_lit", "game_over"])
-        # 3*10 (deposited) + 100 (lantern) + 1*2 (time_left=1.0) + 2*50 (flames) = 232
-        self.assertEqual(sim.score, 232)
+        self.assertEqual(ev_dawn[-1]["data"], {"result": "won", "reason": "dawn_survived"})
+        # L1 decayed 60 ticks (5940 -> floor=99); L2..L5 decayed 84 ticks (5916 -> floor=98 each)
+        # Dawn bonus: 5*50 + (99 + 4*98) + 2*50 = 250 + 491 + 100 = 841; total = 115 + 841 = 956
+        self.assertEqual(sim.score, 956)
 
         # Carry capacity cap & pulse miss (stunned_ids == [])
         sim2 = GameSim(

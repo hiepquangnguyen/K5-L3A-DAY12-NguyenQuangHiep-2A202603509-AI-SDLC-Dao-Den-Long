@@ -1,4 +1,4 @@
-"""End-to-end Test Contract v1.1 headless CLI tests."""
+"""End-to-end Test Contract v1.2 headless CLI tests."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def parse_jsonl(path: Path) -> list[dict]:
 
 
 class TestHeadlessContract(unittest.TestCase):
-    def test_snapshot_v1_1_schema_fields(self) -> None:
+    def test_snapshot_v1_2_schema_fields(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "schema.jsonl"
             proc = run_headless("--seed", "1", "--night", "2", "--ticks", "0", "--out", str(out))
@@ -54,26 +54,36 @@ class TestHeadlessContract(unittest.TestCase):
             ):
                 self.assertIn(key, snap)
             self.assertEqual(snap["night"], 2)
+            self.assertEqual(snap["time_left_s"], 270.0)
             for pkey in (
                 "pos",
                 "vel",
                 "grounded",
                 "flames",
                 "carried",
+                "capacity",
                 "invuln",
                 "dash_cd_s",
                 "pulse_cd_s",
                 "charm_s",
             ):
                 self.assertIn(pkey, snap["player"])
+            self.assertEqual(snap["player"]["capacity"], 10)
             self.assertEqual(len(snap["lanterns"]), 6)
+            for lkey in ("id", "pos", "lit", "deposited", "fuel", "ever_lit", "relit_count"):
+                self.assertIn(lkey, snap["lanterns"][0])
+            self.assertEqual(snap["lanterns"][0]["fuel"], 0.0)
+            self.assertFalse(snap["lanterns"][0]["ever_lit"])
+            self.assertEqual(snap["lanterns"][0]["relit_count"], 0)
             self.assertEqual(len(snap["charms"]), 1)
             self.assertIn("kind", snap["motes"][0])
             self.assertIn("ttl_s", snap["motes"][0])
 
-    def test_pickup_deposit_win_scenario(self) -> None:
+    def test_pickup_deposit_no_early_all_lit_win(self) -> None:
+        # Migrated from v1.1 (CHANGELOG 1.2.0): TICKET-03 removed early all_lit win and
+        # changed per_mote=5; lighting all 5 lanterns boosts capacity -> 12 and stays playing.
         with tempfile.TemporaryDirectory() as td:
-            out = Path(td) / "win.jsonl"
+            out = Path(td) / "no_early_win.jsonl"
             proc = run_headless(
                 "--seed",
                 "10",
@@ -102,17 +112,22 @@ class TestHeadlessContract(unittest.TestCase):
             self.assertEqual(events[0]["name"], "night_start")
             self.assertEqual(names.count("mote_picked"), 10)
             self.assertIn("deposit", names)
-            self.assertIn("lantern_lit", names)
-            self.assertEqual(events[-1]["name"], "game_over")
-            self.assertEqual(events[-1]["data"], {"result": "won", "reason": "all_lit"})
-            self.assertEqual(events[-1]["tick"], 106)
+            lit_events = [e for e in events if e["name"] == "lantern_lit"]
+            self.assertEqual(len(lit_events), 1)
+            self.assertEqual(lit_events[0]["data"], {"lantern_id": "L1", "relight": False})
+            self.assertNotIn("game_over", names)
+
+            snaps = {s["tick"]: s for s in rows if s["type"] == "snapshot"}
+            self.assertEqual(snaps[110]["player"]["capacity"], 12)
+            self.assertAlmostEqual(snaps[110]["lanterns"][0]["fuel"], 99.9, places=1)
+            self.assertTrue(snaps[110]["lanterns"][0]["ever_lit"])
 
             end = rows[-1]
             self.assertEqual(end["type"], "end")
-            self.assertEqual(end["state"], "won")
-            self.assertEqual(end["ticks"], 106)
-            # 10*10 + 100 + floor(300 - 106/60)*2 + 3*50 = 100 + 100 + 596 + 150 = 946
-            self.assertEqual(end["score"], 946)
+            self.assertEqual(end["state"], "playing")
+            self.assertEqual(end["ticks"], 300)
+            # v1.2: 10*5 + 100 = 150 (no all_lit win bonus yet)
+            self.assertEqual(end["score"], 150)
 
     def test_pulse_and_safe_radius_scenario(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -239,6 +254,10 @@ class TestHeadlessContract(unittest.TestCase):
             '{"player": {"pos": [0, 0]}}',
             '{"shades": [{"pos": [0, 0, 0], "state": "avoid"}]}',
             '{"drifters": [{"pos": [0, 0, 0], "state": "bad"}]}',
+            '{"lanterns": [{"id": "L1", "lit": true, "fuel": 105}]}',
+            '{"lanterns": [{"id": "L1", "ever_lit": "yes"}]}',
+            '{"player": {"successful_lights": -1}}',
+            '{"shades": [{"pos": [0, 0, 0], "state": "drain", "target_lantern_id": "L99"}]}',
         ]
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "bad.jsonl"
