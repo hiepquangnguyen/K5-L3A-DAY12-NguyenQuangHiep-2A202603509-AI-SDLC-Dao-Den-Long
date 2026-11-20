@@ -1,4 +1,4 @@
-"""Configuration and Test Contract loader for Đảo Đèn Lồng."""
+"""Configuration and Test Contract v1.1 loader for Đảo Đèn Lồng."""
 
 from __future__ import annotations
 
@@ -11,20 +11,23 @@ CONTRACT_PATH = ROOT_DIR / "game.contract.json"
 TICK_RATE = 60
 DT = 1.0 / TICK_RATE
 
-DEFAULT_ISLAND_RADIUS = 45.0
-JUMP_SPEED = 7.5
+JUMP_SPEED = 7.0
 GRAVITY = 20.0
 SHADE_DEFAULT_Y = 1.0
+DRIFTER_DEFAULT_Y = 1.2
 
-DEFAULT_LANTERN_POSITIONS: tuple[tuple[str, tuple[float, float, float]], ...] = (
-    ("L1", (0.0, 0.0, 25.0)),
-    ("L2", (23.776, 0.0, 7.725)),
-    ("L3", (14.695, 0.0, -20.225)),
-    ("L4", (-14.695, 0.0, -20.225)),
-    ("L5", (-23.776, 0.0, 7.725)),
+NIGHT_DURATION_KEYS: dict[int, str] = {
+    1: "night1_duration_s",
+    2: "night2_duration_s",
+    3: "night3_duration_s",
+}
+
+VALID_SHADE_STATES: frozenset[str] = frozenset(
+    {"spawning", "wander", "chase", "recoil", "stunned"}
 )
-
-VALID_LANTERN_IDS: frozenset[str] = frozenset(lid for lid, _ in DEFAULT_LANTERN_POSITIONS)
+VALID_DRIFTER_STATES: frozenset[str] = frozenset(
+    {"idle", "chase", "flee", "removed"}
+)
 
 
 def load_contract(path: Path | None = None) -> dict:

@@ -1,4 +1,4 @@
-"""Test Contract v1.0 headless CLI runner for Đảo Đèn Lồng."""
+"""Test Contract v1.1 headless CLI runner for Đảo Đèn Lồng (Nights 1, 2, 3)."""
 
 from __future__ import annotations
 
@@ -7,15 +7,16 @@ import json
 import sys
 from pathlib import Path
 
-from src.sim.config import VALID_LANTERN_IDS, load_contract
+from src.sim.config import load_contract
 from src.sim.engine import GameSim, InputState
+from src.sim.maps import get_night_map
 from src.sim.validation import ContractFormatError, parse_inputs_file, parse_scenario_file
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Headless Test Contract v1.0 runner")
+    parser = argparse.ArgumentParser(description="Headless Test Contract v1.1 runner")
     parser.add_argument("--seed", type=int, required=True, help="Deterministic PRNG seed")
-    parser.add_argument("--night", type=int, required=True, help="Night number (1 for Phase 1)")
+    parser.add_argument("--night", type=int, required=True, help="Night number (1, 2, or 3)")
     parser.add_argument("--scenario", type=Path, default=None, help="Optional scenario JSON path")
     parser.add_argument("--inputs", type=Path, default=None, help="Optional inputs JSON path")
     parser.add_argument("--ticks", type=int, required=True, help="Maximum simulation steps")
@@ -48,13 +49,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.snapshot_every < 1:
         print("Error: --snapshot-every must be >= 1", file=sys.stderr)
         return 1
-    if args.night != 1:
-        print(f"Error: unsupported --night {args.night}; Phase 1 supports --night 1", file=sys.stderr)
+    if args.night not in (1, 2, 3):
+        print(f"Error: unsupported --night {args.night}; expected 1, 2, or 3", file=sys.stderr)
         return 1
+
+    night_map = get_night_map(args.night)
 
     try:
         scenario = (
-            parse_scenario_file(args.scenario, set(VALID_LANTERN_IDS))
+            parse_scenario_file(args.scenario, set(night_map.valid_lantern_ids))
             if args.scenario is not None
             else None
         )
@@ -79,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
             out_fh.write(_dump_line(sim.snapshot()) + "\n")
 
             for step_tick in range(args.ticks):
-                if sim.state != "playing":
+                if sim.state in ("won", "lost"):
                     break
                 frame = frames_by_tick.get(step_tick)
                 if frame is not None:
@@ -95,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
                         inp.pulse = frame["pulse"]
                     if "dash" in frame:
                         inp.dash = frame["dash"]
+                    if "pause" in frame:
+                        inp.pause = frame["pause"]
 
                 events = sim.step(inp)
                 for ev in events:
