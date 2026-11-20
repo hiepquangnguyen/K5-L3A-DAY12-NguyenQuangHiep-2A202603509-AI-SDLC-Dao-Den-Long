@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Đảo Đèn Lồng — Benchmark (v1.3)</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0e1430;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #f5f1e6;
+    }
+    #bench-canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #bench-status {
+      position: fixed;
+      top: 12px;
+      left: 14px;
+      padding: 8px 14px;
+      background: rgba(14, 20, 48, 0.8);
+      border: 1px solid rgba(242, 193, 78, 0.45);
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bench-canvas"></canvas>
+  <div id="bench-status">Đang khởi tạo cảnh chuẩn Benchmark (200 Bóng Mực · 100 Đom đóm)...</div>
+  <script type="module" src="/bench.js"></script>
+</body>
+</html>
