@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .agents/hooks/verify_gate.py || python .agents/hooks/verify_gate.py"
+          }
+        ]
+      }
+    ]
+  }
+}

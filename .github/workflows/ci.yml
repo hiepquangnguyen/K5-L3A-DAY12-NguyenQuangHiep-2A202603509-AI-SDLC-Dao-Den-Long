@@ -1,0 +1,24 @@
+name: Phase Verification CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["phase-*", "v*"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile check
+        run: python3 -m compileall -q src
+      - name: Run unit and headless contract tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Run full verification gate
+        run: python3 .agents/hooks/verify_gate.py
+      - name: Run phase 1 verification script (check-only)
+        run: python3 scripts/run_phase1_verification.py --check-only
