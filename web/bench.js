@@ -26,11 +26,13 @@ const PALETTE = {
 const canvas = document.getElementById('bench-canvas');
 const elStatus = document.getElementById('bench-status');
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, precision: 'mediump', powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(1);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.BasicShadowMap;
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
@@ -86,9 +88,9 @@ seaFloor.position.y = -11.5;
 scene.add(seaFloor);
 
 // Night 1 Island (r=40m)
-const grassMat = new THREE.MeshStandardMaterial({ color: PALETTE.grass, roughness: 0.9 });
-const sandMat = new THREE.MeshStandardMaterial({ color: PALETTE.sand, roughness: 0.85 });
-const woodMat = new THREE.MeshStandardMaterial({ color: PALETTE.wood, roughness: 0.82 });
+const grassMat = new THREE.MeshLambertMaterial({ color: PALETTE.grass });
+const sandMat = new THREE.MeshLambertMaterial({ color: PALETTE.sand });
+const woodMat = new THREE.MeshLambertMaterial({ color: PALETTE.wood });
 
 const islandBody = new THREE.Mesh(new THREE.CylinderGeometry(40, 38.4, 3.0, 48), grassMat);
 islandBody.position.set(0, -1.5, 0);
@@ -108,19 +110,19 @@ for (let i = 0; i < 4; i++) {
 
 // Stationary Mây at (0, 0, 0) without extra creative Halo/trails
 const playerGroup = new THREE.Group();
-const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.54, 1.25, 14), new THREE.MeshStandardMaterial({ color: PALETTE.mayCloak, roughness: 0.75 }));
+const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.54, 1.25, 14), new THREE.MeshLambertMaterial({ color: PALETTE.mayCloak }));
 cloak.position.y = 0.68;
 cloak.castShadow = true;
-const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.09, 8, 16), new THREE.MeshStandardMaterial({ color: PALETTE.mayCrimson, roughness: 0.6 }));
+const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.09, 8, 16), new THREE.MeshLambertMaterial({ color: PALETTE.mayCrimson }));
 scarf.rotation.x = Math.PI / 2;
 scarf.position.y = 1.25;
-const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12), new THREE.MeshStandardMaterial({ color: 0xf6d9c3, roughness: 0.65 }));
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12), new THREE.MeshLambertMaterial({ color: 0xf6d9c3 }));
 head.position.y = 1.44;
-const hat = new THREE.Mesh(new THREE.ConeGeometry(0.68, 0.38, 16), new THREE.MeshStandardMaterial({ color: PALETTE.sand, roughness: 0.85, side: THREE.DoubleSide }));
+const hat = new THREE.Mesh(new THREE.ConeGeometry(0.68, 0.38, 16), new THREE.MeshLambertMaterial({ color: PALETTE.sand, side: THREE.DoubleSide }));
 hat.position.y = 1.7;
 const miniLantern = new THREE.Mesh(
   new THREE.SphereGeometry(0.11, 8, 8),
-  new THREE.MeshStandardMaterial({ color: PALETTE.lanternCore, emissive: PALETTE.lanternLit, emissiveIntensity: 2.0 })
+  new THREE.MeshLambertMaterial({ color: PALETTE.lanternCore, emissive: PALETTE.lanternLit, emissiveIntensity: 2.0 })
 );
 miniLantern.position.set(0, 1.32, 0.56);
 const playerLight = new THREE.PointLight(PALETTE.lanternLit, 3.6, 15, 1.6);
@@ -135,7 +137,7 @@ function addLantern(lData) {
 
   const stoneBase = new THREE.Mesh(
     new THREE.CylinderGeometry(0.7, 0.88, 0.42, 8),
-    new THREE.MeshStandardMaterial({ color: PALETTE.lanternUnlit, roughness: 0.9 })
+    new THREE.MeshLambertMaterial({ color: PALETTE.lanternUnlit })
   );
   stoneBase.position.y = 0.21;
   stoneBase.castShadow = true;
@@ -146,11 +148,10 @@ function addLantern(lData) {
 
   const housing = new THREE.Mesh(
     new THREE.SphereGeometry(0.62, 14, 12),
-    new THREE.MeshStandardMaterial({
+    new THREE.MeshLambertMaterial({
       color: lData.lit ? PALETTE.lanternCore : PALETTE.lanternUnlit,
       emissive: lData.lit ? PALETTE.lanternLit : PALETTE.lanternUnlit,
       emissiveIntensity: lData.lit ? 2.4 : 0.25,
-      roughness: 0.4,
     })
   );
   housing.scale.set(lData.lit ? 1.0 : 1.06, lData.lit ? 1.25 : 1.0, lData.lit ? 1.0 : 1.06);
@@ -192,8 +193,8 @@ function initEntities(msg) {
   const motes = msg.motes || [];
   if (motes.length > 0 && !moteCoreMesh) {
     moteCoreMesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(0.24, 8, 8),
-      new THREE.MeshStandardMaterial({
+      new THREE.SphereGeometry(0.24, 6, 6),
+      new THREE.MeshLambertMaterial({
         color: PALETTE.moteCore,
         emissive: PALETTE.moteHalo,
         emissiveIntensity: 2.3,
@@ -201,8 +202,8 @@ function initEntities(msg) {
       motes.length
     );
     moteHaloMesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(0.42, 8, 8),
-      new THREE.MeshBasicMaterial({ color: PALETTE.moteHalo, transparent: true, opacity: 0.28 }),
+      new THREE.SphereGeometry(0.42, 6, 6),
+      new THREE.MeshBasicMaterial({ color: PALETTE.moteHalo, transparent: true, opacity: 0.28, depthWrite: false }),
       motes.length
     );
     for (let i = 0; i < motes.length; i++) {
@@ -224,12 +225,11 @@ function initEntities(msg) {
   shadeCount = shades.length;
   if (shadeCount > 0 && !shadeBodiesMesh) {
     shadeBodiesMesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(0.62, 10, 10),
-      new THREE.MeshStandardMaterial({
+      new THREE.SphereGeometry(0.62, 8, 8),
+      new THREE.MeshLambertMaterial({
         color: PALETTE.shadeBody,
         emissive: PALETTE.shadeAura,
         emissiveIntensity: 0.9,
-        roughness: 0.5,
       }),
       shadeCount
     );
@@ -239,42 +239,65 @@ function initEntities(msg) {
       new THREE.MeshBasicMaterial({ color: PALETTE.shadeAura }),
       shadeCount * 2
     );
+    dummy.rotation.set(0, 0, 0);
     for (let i = 0; i < shadeCount; i++) {
-      latestSx[i] = shades[i][0];
-      latestSy[i] = shades[i][1];
-      latestSz[i] = shades[i][2];
+      const x = shades[i][0];
+      const y = shades[i][1];
+      const z = shades[i][2];
+      latestSx[i] = x;
+      latestSy[i] = y;
+      latestSz[i] = z;
+
+      dummy.scale.set(1, 1.35, 1);
+      dummy.position.set(x, y, z);
+      dummy.updateMatrix();
+      shadeBodiesMesh.setMatrixAt(i, dummy.matrix);
+
+      dummy.scale.set(1, 1, 1);
+      dummy.position.set(x - 0.2, y + 0.25, z + 0.52);
+      dummy.updateMatrix();
+      shadeEyesMesh.setMatrixAt(i * 2, dummy.matrix);
+
+      dummy.position.set(x + 0.2, y + 0.25, z + 0.52);
+      dummy.updateMatrix();
+      shadeEyesMesh.setMatrixAt(i * 2 + 1, dummy.matrix);
     }
-    updateShadeMatrices();
+    shadeBodiesMesh.instanceMatrix.needsUpdate = true;
+    shadeEyesMesh.instanceMatrix.needsUpdate = true;
+    shadesDirty = false;
     scene.add(shadeBodiesMesh, shadeEyesMesh);
   }
 }
 
 function updateShadeMatrices() {
   if (!shadeBodiesMesh || shadeCount === 0) return;
+  const bodiesArr = shadeBodiesMesh.instanceMatrix.array;
+  const eyesArr = shadeEyesMesh.instanceMatrix.array;
   for (let i = 0; i < shadeCount; i++) {
     const x = latestSx[i];
     const y = latestSy[i];
     const z = latestSz[i];
-    dummy.position.set(x, y, z);
-    dummy.rotation.set(0, 0, 0);
-    dummy.scale.set(1, 1.35, 1);
-    dummy.updateMatrix();
-    shadeBodiesMesh.setMatrixAt(i, dummy.matrix);
+    const bOff = i * 16;
+    bodiesArr[bOff + 12] = x;
+    bodiesArr[bOff + 13] = y;
+    bodiesArr[bOff + 14] = z;
 
-    dummy.scale.set(1, 1, 1);
-    dummy.position.set(x - 0.2, y + 0.25, z + 0.52);
-    dummy.updateMatrix();
-    shadeEyesMesh.setMatrixAt(i * 2, dummy.matrix);
+    const e0Off = i * 32;
+    eyesArr[e0Off + 12] = x - 0.2;
+    eyesArr[e0Off + 13] = y + 0.25;
+    eyesArr[e0Off + 14] = z + 0.52;
 
-    dummy.position.set(x + 0.2, y + 0.25, z + 0.52);
-    dummy.updateMatrix();
-    shadeEyesMesh.setMatrixAt(i * 2 + 1, dummy.matrix);
+    const e1Off = e0Off + 16;
+    eyesArr[e1Off + 12] = x + 0.2;
+    eyesArr[e1Off + 13] = y + 0.25;
+    eyesArr[e1Off + 14] = z + 0.52;
   }
   shadeBodiesMesh.instanceMatrix.needsUpdate = true;
   shadeEyesMesh.instanceMatrix.needsUpdate = true;
 }
 
 let sceneReady = false;
+let shadesDirty = true;
 function connectBenchWS() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
@@ -289,6 +312,7 @@ function connectBenchWS() {
         latestSy[i] = f32[base + 1];
         latestSz[i] = f32[base + 2];
       }
+      shadesDirty = true;
       return;
     }
     const msg = JSON.parse(ev.data);
@@ -306,7 +330,6 @@ const ORBIT_Y = 15.0;
 const PERIOD_S = 15.0;
 
 let firstFrameSent = false;
-let measuringStarted = false;
 let benchDoneSent = false;
 let startMs = 0;
 let measureStartMs = 0;
@@ -337,17 +360,17 @@ function tickBench(now) {
   camera.position.set(Math.cos(theta) * ORBIT_RADIUS, ORBIT_Y, -Math.sin(theta) * ORBIT_RADIUS);
   camera.lookAt(0, 0, 0);
 
-  updateShadeMatrices();
+  if (shadesDirty) {
+    updateShadeMatrices();
+    shadesDirty = false;
+    renderer.shadowMap.needsUpdate = true;
+  }
   renderer.render(scene, camera);
 
   const dtMs = now - prevFrameMs;
   prevFrameMs = now;
 
   if (now >= measureStartMs) {
-    if (!measuringStarted) {
-      measuringStarted = true;
-      elStatus.textContent = `Đang đo hiệu năng (${DURATION_S}s)...`;
-    }
     if (dtMs > 0.0) {
       dtSamples.push(dtMs);
     }

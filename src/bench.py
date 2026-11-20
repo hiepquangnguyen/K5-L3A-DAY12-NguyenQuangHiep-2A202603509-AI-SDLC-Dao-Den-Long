@@ -286,7 +286,7 @@ async def _sample_memory_loop(coord: _BenchCoordinator) -> None:
         val = await asyncio.to_thread(get_process_tree_rss_mb, pids)
         if val is not None:
             coord.peak_mem_mb = val if coord.peak_mem_mb is None else max(coord.peak_mem_mb, val)
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(2.0)
 
 
 async def _run_bench_async(seed: int, duration: float, warmup: float, t_proc_start: float) -> dict:
@@ -306,9 +306,19 @@ async def _run_bench_async(seed: int, duration: float, warmup: float, t_proc_sta
         browser_exe,
         f"--app={url}",
         "--window-size=1280,720",
+        "--window-position=40,40",
         "--disable-frame-rate-limit",
         "--disable-gpu-vsync",
         "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-extensions",
+        "--disable-component-update",
+        "--disable-sync",
+        "--disable-background-networking",
+        "--disable-default-apps",
+        "--no-service-autorun",
+        "--disable-features=CalculateNativeWinOcclusion,msEdgeSidebarV2,Translate,OptimizationHints,MediaRouter",
         "--no-first-run",
         "--no-default-browser-check",
         f"--user-data-dir={profile_dir}",
