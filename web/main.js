@@ -492,7 +492,14 @@ const charmObjects = new Map();
 const sparks = [];
 const windLeaves = [];
 
+let camInitialized = false;
+const camCurrentPos = new THREE.Vector3();
+const camTargetPos = new THREE.Vector3();
+const desiredCamPos = new THREE.Vector3();
+const desiredTargetPos = new THREE.Vector3();
+
 function clearEntityPools() {
+  camInitialized = false;
   for (const v of lanternObjects.values()) scene.remove(v.group);
   for (const v of moteObjects.values()) scene.remove(v.group);
   for (const v of shadeObjects.values()) scene.remove(v.group);
@@ -737,6 +744,9 @@ function showToast(text) {
 
 function setScreen(scr) {
   activeScreen = scr;
+  if (scr !== 'play') {
+    exitPointerLockSafe();
+  }
   ovMenu.classList.toggle('hidden', scr !== 'menu');
   ovIntro.classList.toggle('hidden', scr !== 'intro');
   ovPause.classList.toggle('hidden', scr !== 'pause');
@@ -781,12 +791,48 @@ function openIntroForNight(night, resetCampaign) {
   setScreen('intro');
 }
 
-// ---------- Controls & WebSocket Sync ----------
+// ---------- Controls, PointerLock & WebSocket Sync ----------
 const keys = new Set();
 let camYawDeg = 0;
 let isDragging = false;
 let lastMouseX = 0;
+let pointerLocked = false;
+let suppressPauseOnUnlock = false;
+let lastLockPauseMs = 0;
 let latestState = null;
+
+function requestPointerLockSafe() {
+  if (activeScreen !== 'play' || pointerLocked || !canvas.requestPointerLock) return;
+  try {
+    const res = canvas.requestPointerLock();
+    if (res && typeof res.catch === 'function') res.catch(() => {});
+  } catch (_) {}
+}
+
+function exitPointerLockSafe() {
+  if (document.pointerLockElement && document.exitPointerLock) {
+    suppressPauseOnUnlock = true;
+    try {
+      document.exitPointerLock();
+    } catch (_) {
+      suppressPauseOnUnlock = false;
+    }
+  }
+}
+
+document.addEventListener('pointerlockchange', () => {
+  const lockedNow = document.pointerLockElement === canvas;
+  pointerLocked = lockedNow;
+  isDragging = false;
+  if (!lockedNow) {
+    if (suppressPauseOnUnlock) {
+      suppressPauseOnUnlock = false;
+    } else if (activeScreen === 'play' && ws && ws.readyState === WebSocket.OPEN) {
+      lastLockPauseMs = performance.now();
+      ws.send(JSON.stringify({ type: 'toggle_pause' }));
+    }
+  }
+});
 
 window.addEventListener('keydown', (e) => {
   sfx.unlock();
@@ -803,7 +849,8 @@ window.addEventListener('keydown', (e) => {
     const muted = sfx.toggleMute();
     document.getElementById('btn-mute-hud').textContent = muted ? '🔇' : '🔊';
   } else if ((code === 'Escape' || code === 'KeyP') && !e.repeat) {
-    if (activeScreen === 'play' || activeScreen === 'pause') {
+    const recentlyUnlocked = performance.now() - lastLockPauseMs < 150;
+    if ((activeScreen === 'play' || activeScreen === 'pause') && !(code === 'Escape' && (pointerLocked || recentlyUnlocked))) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'toggle_pause' }));
       }
@@ -812,17 +859,29 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('keyup', (e) => keys.delete(e.code));
+canvas.addEventListener('click', () => {
+  sfx.unlock();
+  if (activeScreen === 'play' && !pointerLocked) {
+    requestPointerLockSafe();
+  }
+});
 canvas.addEventListener('mousedown', (e) => {
   sfx.unlock();
-  isDragging = true;
-  lastMouseX = e.clientX;
+  if (!pointerLocked) {
+    isDragging = true;
+    lastMouseX = e.clientX;
+  }
 });
 window.addEventListener('mouseup', () => { isDragging = false; });
 window.addEventListener('mousemove', (e) => {
-  if (!isDragging || activeScreen !== 'play') return;
-  const dx = e.clientX - lastMouseX;
-  lastMouseX = e.clientX;
-  camYawDeg = (camYawDeg - dx * 0.35 * settings.sensitivity) % 360;
+  if (activeScreen !== 'play') return;
+  if (pointerLocked) {
+    camYawDeg = (camYawDeg - (e.movementX || 0) * 0.22 * settings.sensitivity) % 360;
+  } else if (isDragging) {
+    const dx = e.clientX - lastMouseX;
+    lastMouseX = e.clientX;
+    camYawDeg = (camYawDeg - dx * 0.35 * settings.sensitivity) % 360;
+  }
 });
 
 let ws = null;
@@ -864,6 +923,7 @@ document.getElementById('btn-start-night').addEventListener('click', () => {
   sfx.unlock();
   clearEntityPools();
   setScreen('play');
+  requestPointerLockSafe();
   if (ws && ws.readyState === WebSocket.OPEN) {
     const nextSeed = Math.floor(Math.random() * 900000) + 1000;
     ws.send(JSON.stringify({
@@ -884,6 +944,7 @@ document.getElementById('btn-pause-hud').addEventListener('click', () => {
 document.getElementById('btn-resume').addEventListener('click', () => {
   if (activeScreen === 'pause' && ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'toggle_pause' }));
+    requestPointerLockSafe();
   }
 });
 document.getElementById('btn-pause-restart').addEventListener('click', () => {
@@ -1447,13 +1508,24 @@ function animate(now) {
 
   cloudSea.rotation.y = t * 0.01;
 
-  // Camera follow
+  // Smooth third-person camera follow (frame-rate independent damping)
   const px = playerGroup.position.x;
   const py = playerGroup.position.y;
   const pz = playerGroup.position.z;
   const rad = THREE.MathUtils.degToRad(camYawDeg);
-  camera.position.set(px - Math.sin(rad) * 14.5, py + 8.8, pz - Math.cos(rad) * 14.5);
-  camera.lookAt(px, py + 1.6, pz);
+  desiredTargetPos.set(px, py + 1.6, pz);
+  desiredCamPos.set(px - Math.sin(rad) * 14.5, py + 8.8, pz - Math.cos(rad) * 14.5);
+  if (!camInitialized || desiredTargetPos.distanceTo(camTargetPos) > 12.0) {
+    camCurrentPos.copy(desiredCamPos);
+    camTargetPos.copy(desiredTargetPos);
+    camInitialized = true;
+  } else {
+    const alpha = 1.0 - Math.exp(-10.0 * dt);
+    camCurrentPos.lerp(desiredCamPos, alpha);
+    camTargetPos.lerp(desiredTargetPos, alpha);
+  }
+  camera.position.copy(camCurrentPos);
+  camera.lookAt(camTargetPos);
 
   updateOffscreenArrow(latestState);
   renderer.render(scene, camera);
