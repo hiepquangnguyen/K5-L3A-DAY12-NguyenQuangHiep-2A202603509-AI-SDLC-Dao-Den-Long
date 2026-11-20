@@ -1,0 +1,20 @@
+# Phase 4 Verification Evidence — Đảo Đèn Lồng ("Bình minh: v1.0.0" · Contract v1.3)
+
+> Mọi tệp JSON, hash SHA-256, kết quả unit test và ảnh chụp `1280×720` trong `docs/proof/phase-4/` được tạo trực tiếp từ máy chủ Windows 10 AMD64 (Python `3.13.11`, Intel HD Graphics 630 + Microsoft Edge) qua `src.bench`, `src.soak`, `scripts/run_phase4_verification.py`, `.agents/hooks/verify_gate.py`, và trình duyệt thực tế tại `http://127.0.0.1:8765/`.
+
+## 1. Bảng truy vết Yêu cầu TICKET-04 (Contract v1.3) → Bằng chứng
+
+| Nhóm | Yêu cầu (`TICKET-04` / Contract `v1.3`) | Cách kiểm chứng | Bằng chứng | Kết quả |
+|---|---|---|---|---|
+| **Benchmark 3D (`1280×720`)** | `--seed 42 --duration 30 --out bench.json`; Đêm 1 đủ ánh sáng/bóng đổ, `200` Shades `wander`, `100` Motes, `L1–L3` `fuel=100`, camera vòng tròn `(30,15,0)` `15s/vòng`, `3s` warm-up; `avg_fps >= 60`, `p1_low_fps >= 30`, `load_ms <= 10000` | `python -m src.bench --seed 42 --duration 30 --out bench.json` + unit tests `test_benchmark_scene_and_frozen_rules`, `test_bench_metric_formulas` | [bench.json](../../../bench.json) (`avg_fps=142.6`, `p1_low_fps=36.1`, `p95=12.6ms`, `frames=4280`, `load_ms=1862`, `peak_mem_mb=849.7`, `vsync_off=true`), [test_report.txt](test_report.txt) | **Đạt** |
+| **Soak Test `10` Đêm** | `--seed 7 --nights 10 --out soak.json`; `crashes == 0`, `mem_end_mb <= 1.2 * mem_start_mb`, RSS thuần stdlib | `python -m src.soak --seed 7 --nights 10 --out soak.json` + `test_soak_3_nights_no_crashes_and_bounded_memory` | [soak.json](../../../soak.json) (`nights=10`, `crashes=0`, `mem=17.4→17.5 MiB`, `duration_s=5.41s`), [test_report.txt](test_report.txt) | **Đạt** |
+| **Bảng xếp hạng Top 10** | Lưu tên `3–12` ký tự (`[A-Za-z0-9_]` + tiếng Việt có dấu), thắng Đêm 3 hoặc thua mọi Đêm, sắp xếp Top 10 `(-score, earlier achieved_at)`, bền vững đĩa, `--export-leaderboard out.json` | `test_leaderboard_validation_sorting_persistence_and_cli_export`, `test_http_leaderboard_strict_validation_and_get_post`, xuất mẫu từ `src.play --export-leaderboard` & UI `#leaderboard-overlay` | [leaderboard_export_sample.json](leaderboard_export_sample.json), [leaderboard_v13.png](leaderboard_v13.png), [test_report.txt](test_report.txt) | **Đạt** |
+| **Dễ tiếp cận (`A11y`)** | Đổi `9` phím + báo trùng + khôi phục + `localStorage`; phụ đề & mũi tên Bóng Mực mới (`shade_spawned`, gió, `10s` cuối, dầu `< 30`); Giảm chuyển động; chữ `>= 18px` + Chữ lớn (`×1.25` -> `22.5px`) | Kiểm thử tương tác `1280×720` trên trình duyệt thực (`0` lỗi console/mạng, giữ cài đặt sau reload) + kiểm toán mã `web/main.js` & `web/style.css` | [menu_v13.png](menu_v13.png), [settings_a11y.png](settings_a11y.png), [night1_v13_large.png](night1_v13_large.png), [night1_v13_18px.png](night1_v13_18px.png) | **Đạt** |
+| **Tất định, Tests & Phát hành** | Không đổi đầu ra headless Contract `v1.0–v1.2`; đủ `41/41` tests; `Dockerfile`, `run.sh`/`run.bat`, portable zip, clean clone, `README`, `CHANGELOG`, `CREDITS`, `retro.md`, tag `phase-4`, Release `v1.0.0` | `scripts/run_phase4_verification.py`, `.agents/hooks/verify_gate.py`, clean clone, `scripts/build_release.py` | [test_report.txt](test_report.txt) (`41/41 OK`), [determinism_diff.txt](determinism_diff.txt), [perf_night3_dawn.txt](perf_night3_dawn.txt), [retro.md](../../notes/retro.md) | **Đạt** |
+
+## 2. Ảnh chụp Kiểm thử Trình duyệt (`1280×720`)
+- [menu_v13.png](menu_v13.png): Menu chính hiển thị nút **🏆 Bảng xếp hạng** và **⚙ Cài đặt & Dễ tiếp cận**.
+- [leaderboard_v13.png](leaderboard_v13.png): Bảng xếp hạng Top 10 mở từ Menu chính với đầy đủ 5 cột (`#`, `Tên`, `Điểm`, `Đêm thắng`, `Thời gian`).
+- [settings_a11y.png](settings_a11y.png): Màn hình Cài đặt đang bật **Chữ lớn (`×1.25`)** & **Giảm chuyển động** cùng lưới đổi `9` phím và nút **Khôi phục mặc định**.
+- [night1_v13_large.png](night1_v13_large.png): Đêm 1 – Đảo Bến ở chế độ **Chữ lớn (`22.5px`)** tại `1280×720` không tràn/che khuất HUD (`FPS: 61 (avg 49.1)`).
+- [night1_v13_18px.png](night1_v13_18px.png): Đêm 1 – Đảo Bến sau khi khôi phục cỡ chữ gốc **`18px`** (`FPS: 30 (avg 56.4)` ở frame chụp / `59` ở HUD) với `0` lỗi console/mạng.

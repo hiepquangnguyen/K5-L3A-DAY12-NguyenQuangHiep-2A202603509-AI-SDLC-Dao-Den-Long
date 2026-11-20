@@ -1,0 +1,18 @@
+{
+  "entries": [
+    {
+      "name": "Mây_Đêm1",
+      "score": 890,
+      "nights_won": 3,
+      "achieved_at": "2026-11-20T18:00:00+07:00",
+      "seed": 42
+    },
+    {
+      "name": "NgườiGiữĐèn",
+      "score": 640,
+      "nights_won": 2,
+      "achieved_at": "2026-11-20T18:15:00+07:00",
+      "seed": 7
+    }
+  ]
+}

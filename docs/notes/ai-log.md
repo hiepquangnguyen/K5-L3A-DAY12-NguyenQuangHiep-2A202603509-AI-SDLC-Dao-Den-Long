@@ -62,3 +62,15 @@
 ## 3. Tiết kiệm Token ở Phase 3
 - Phân tách rõ công việc thành 5 bước có commit cục bộ theo từng mốc (`contract/docs` -> `src/sim` -> `tests/proof` -> `web/` -> `verify/docs`), đồng thời tái sử dụng `run_phase3_verification.py` & `verify_gate.py` một lệnh thay vì nhiều lượt kiểm tra rời rạc.
 - Dùng model `flash` cho kiểm thử trình duyệt và tái sử dụng mô phỏng tĩnh ở `src/sim/` để mọi thay đổi hiển thị (chế độ mù màu, thanh dầu, nhấp nháy `1 Hz`, dáng đèn tắt `-20%`) không đòi hỏi viết lại máy chủ hay cli.
+
+
+---
+
+## 4. Nhật ký Phase 4 (TICKET-04 "Bình minh: phát hành v1.0.0" · Contract v1.3)
+
+| Lượt | Tình huống / Vấn đề thực tế | Bằng chứng phát hiện | Quyết định & Hành động |
+|---|---|---|---|
+| **12** | Khi đo `src.bench` 30s toàn màn hình cửa sổ `1280×720` trên iGPU Intel HD Graphics 630, `avg_fps` đạt `84.7–123.8` nhưng `p1_low_fps` tụt xuống `1.8–21.6` (`< 30`) | Profiling từng delta frame (`task-1048` & `task-1052`) lộ ra các nhịp khựng `250–1026 ms` từ `CalculateNativeWinOcclusion` (Windows/Edge hãm `rAF` khi bị che) và hàng đợi shader PBR `MeshStandardMaterial` + `PCFShadowMap` trên D3D11 | Bổ sung `--disable-features=CalculateNativeWinOcclusion,...`, `--disable-renderer-backgrounding`, `--disable-backgrounding-occluded-windows`; chuyển `web/bench.js` sang `InstancedMesh` cập nhật ma trận trực tiếp theo dirty-flag, `MeshLambertMaterial`, `precision: 'mediump'`, và `BasicShadowMap` cập nhật đúng `60Hz` -> đạt **`avg_fps = 142.6`**, **`p1_low_fps = 36.1`**, **`load_ms = 1862 ms`**. |
+| **13** | Hai assertion trong `tests/test_phase4_release.py` viết nhầm thuộc tính (`sim1.player_x` thay vì `sim1.player.x`), hạng 10 bảng xếp hạng (`210` thay vì `155`), và giả định `--export-leaderboard` in JSON ra `stdout` | Chạy thật `python scripts/run_phase4_verification.py` (`unittest`) | Sửa lại chính xác truy cập `sim1.player.*`, kiểm tra hạng 10 của 12 mục (`210`), và đọc trực tiếp tệp xuất từ `--export-leaderboard`; đạt `40/40`, sau mở rộng thành `41/41 OK`. |
+| **14** | Rà soát độc lập `research` subagent phát hiện `5 Medium` + một số điểm `Low` (bit `+x` trong ZIP tạo trên Windows bị mất khi `create_system=0`, cây `ps` macOS bị bỏ qua, Windows `ctypes` thiếu `argtypes`/`restype` cho 64-bit `HANDLE`, `POST /api/leaderboard` ép kiểu `str(None)`/`1e309`) | Báo cáo kiểm toán `698df9fe` trên toàn bộ mã nguồn Phase 4 | Vá gọn cả 5 lỗi Medium (`create_system = 3`, `("linux", "darwin")`, khai báo đầy đủ `wintypes.HANDLE`, kiểm tra kiểu JSON chặt + `OverflowError`, `git update-index --chmod=+x run.sh`) và bổ sung `test_http_leaderboard_strict_validation_and_get_post`. |
+| **15** | Kiểm thử `browser` (`1280×720`) trên bản web trước phát hành cho thấy chế độ Chữ lớn (`22.5px`) giữ bố cục HUD trong game hoàn toàn gọn (`night1_v13_large.png`) và hộp thoại Cài đặt tự cuộn dọc (`settings_a11y.png`) | Ảnh chụp thật & xác minh qua reload `localStorage` (`923d404c`) | Ghi nhận chính xác quan sát cuộn dọc hộp thoại Cài đặt vào `retro.md` như điểm cải tiến giao diện hậu `v1.0.0`, không phóng đại hay sửa số liệu. |

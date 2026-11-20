@@ -1,0 +1,51 @@
+$ C:\Users\hiepq\AppData\Local\Programs\Python\Python313\python.exe -m unittest discover -s tests -v
+exit_code: 0 (elapsed: 32.30s)
+--- stdout ---
+
+--- stderr ---
+test_dawn_timeout_loss (test_headless_contract.TestHeadlessContract.test_dawn_timeout_loss) ... ok
+test_determinism_identical_bytes (test_headless_contract.TestHeadlessContract.test_determinism_identical_bytes) ... ok
+test_invalid_inputs_and_scenario_exit_code_2 (test_headless_contract.TestHeadlessContract.test_invalid_inputs_and_scenario_exit_code_2) ... ok
+test_pickup_deposit_no_early_all_lit_win (test_headless_contract.TestHeadlessContract.test_pickup_deposit_no_early_all_lit_win) ... ok
+test_pulse_and_safe_radius_scenario (test_headless_contract.TestHeadlessContract.test_pulse_and_safe_radius_scenario) ... ok
+test_shade_hit_and_no_flames_loss (test_headless_contract.TestHeadlessContract.test_shade_hit_and_no_flames_loss) ... ok
+test_snapshot_v1_2_schema_fields (test_headless_contract.TestHeadlessContract.test_snapshot_v1_2_schema_fields) ... ok
+test_ticks_zero_and_help_exit_zero (test_headless_contract.TestHeadlessContract.test_ticks_zero_and_help_exit_zero) ... ok
+test_unsupported_night_returns_nonzero (test_headless_contract.TestHeadlessContract.test_unsupported_night_returns_nonzero) ... ok
+test_audit_regressions_ramp_side_idle_drifter_charm_speed_and_outcome_order (test_phase2_features.TestPhase2Features.test_audit_regressions_ramp_side_idle_drifter_charm_speed_and_outcome_order) ... ok
+test_charm_boosts_speed_removes_dash_cooldown_and_respawns (test_phase2_features.TestPhase2Features.test_charm_boosts_speed_removes_dash_cooldown_and_respawns) ... ok
+test_dash_air_altitude_hold_and_cooldown (test_phase2_features.TestPhase2Features.test_dash_air_altitude_hold_and_cooldown) ... ok
+test_drifter_steal_ignores_invuln_safe_zone_and_pulse_drops (test_phase2_features.TestPhase2Features.test_drifter_steal_ignores_invuln_safe_zone_and_pulse_drops) ... ok
+test_fall_off_island_ignores_invuln_respawns_and_loses_on_last_flame (test_phase2_features.TestPhase2Features.test_fall_off_island_ignores_invuln_respawns_and_loses_on_last_flame) ... ok
+test_night2_bridge_and_launch_pad (test_phase2_features.TestPhase2Features.test_night2_bridge_and_launch_pad) ... ok
+test_night3_dawn_18000_and_stress_21600_ticks_under_30s_and_deterministic (test_phase2_features.TestPhase2Features.test_night3_dawn_18000_and_stress_21600_ticks_under_30s_and_deterministic) ... ok
+test_night3_ramp_cliffs_launch_bell_tower_and_wind (test_phase2_features.TestPhase2Features.test_night3_ramp_cliffs_launch_bell_tower_and_wind) ... ok
+test_pause_freezes_sim_tick_timers_and_ttl (test_phase2_features.TestPhase2Features.test_pause_freezes_sim_tick_timers_and_ttl) ... ok
+test_safe_push_30_ticks_and_obstacle_knockback_stop (test_phase2_features.TestPhase2Features.test_safe_push_30_ticks_and_obstacle_knockback_stop) ... ok
+test_contract_v1_2_durations_and_tuning_keys (test_phase3_change_request.TestPhase3ChangeRequest.test_contract_v1_2_durations_and_tuning_keys) ... ok
+test_dawn_thresholds_nights_1_2_3_step2_out_and_dawn_score_formula (test_phase3_change_request.TestPhase3ChangeRequest.test_dawn_thresholds_nights_1_2_3_step2_out_and_dawn_score_formula) ... ok
+test_exact_integer_fuel_decay_threshold_30_and_lantern_out (test_phase3_change_request.TestPhase3ChangeRequest.test_exact_integer_fuel_decay_threshold_30_and_lantern_out) ... ok
+test_headless_cli_phase3_scenarios (test_phase3_change_request.TestPhase3ChangeRequest.test_headless_cli_phase3_scenarios) ... ok
+test_progressive_carry_capacity_10_to_20_and_reset (test_phase3_change_request.TestPhase3ChangeRequest.test_progressive_carry_capacity_10_to_20_and_reset) ... ok
+test_relight_cost_5_refuel_ceil_skip_full_and_safe_restore_push (test_phase3_change_request.TestPhase3ChangeRequest.test_relight_cost_5_refuel_ceil_skip_full_and_safe_restore_push) ... ok
+test_shade_drain_targeting_stacking_exits_and_pulse_score (test_phase3_change_request.TestPhase3ChangeRequest.test_shade_drain_targeting_stacking_exits_and_pulse_score) ... ok
+test_bench_metric_formulas (test_phase4_release.TestPhase4Release.test_bench_metric_formulas) ... ok
+test_benchmark_scene_and_frozen_rules (test_phase4_release.TestPhase4Release.test_benchmark_scene_and_frozen_rules) ... ok
+test_contract_v1_3_metadata_and_commands (test_phase4_release.TestPhase4Release.test_contract_v1_3_metadata_and_commands) ... ok
+test_http_leaderboard_strict_validation_and_get_post (test_phase4_release.TestPhase4Release.test_http_leaderboard_strict_validation_and_get_post) ... ok
+test_leaderboard_validation_sorting_persistence_and_cli_export (test_phase4_release.TestPhase4Release.test_leaderboard_validation_sorting_persistence_and_cli_export) ... ok
+test_soak_3_nights_no_crashes_and_bounded_memory (test_phase4_release.TestPhase4Release.test_soak_3_nights_no_crashes_and_bounded_memory) ... ok
+test_camera_yaw_rotation_and_normalization (test_sim_unit.TestGameSimUnit.test_camera_yaw_rotation_and_normalization) ... ok
+test_invuln_window_drop_ratio_and_recoil (test_sim_unit.TestGameSimUnit.test_invuln_window_drop_ratio_and_recoil) ... ok
+test_negative_zero_rounding_and_jump_no_auto_rejump (test_sim_unit.TestGameSimUnit.test_negative_zero_rounding_and_jump_no_auto_rejump) ... ok
+test_partial_deposit_dawn_win_scoring_capacity_and_pulse_miss (test_sim_unit.TestGameSimUnit.test_partial_deposit_dawn_win_scoring_capacity_and_pulse_miss) ... ok
+test_pickup_radius_and_height_tolerance_and_landing (test_sim_unit.TestGameSimUnit.test_pickup_radius_and_height_tolerance_and_landing) ... ok
+test_random_shades_spawn_at_tick_300_deterministically (test_sim_unit.TestGameSimUnit.test_random_shades_spawn_at_tick_300_deterministically) ... ok
+test_rising_edge_for_interact_and_pulse (test_sim_unit.TestGameSimUnit.test_rising_edge_for_interact_and_pulse) ... ok
+test_safe_radius_blocks_active_shades_only_for_lit_lanterns (test_sim_unit.TestGameSimUnit.test_safe_radius_blocks_active_shades_only_for_lit_lanterns) ... ok
+test_scenario_setup_emits_no_events_or_score (test_sim_unit.TestGameSimUnit.test_scenario_setup_emits_no_events_or_score) ... ok
+
+----------------------------------------------------------------------
+Ran 41 tests in 31.787s
+
+OK
