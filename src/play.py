@@ -1,4 +1,4 @@
-"""Single-port asyncio HTTP + RFC 6455 WebSocket 60Hz server for Đảo Đèn Lồng."""
+"""Single-port asyncio HTTP + RFC 6455 WebSocket 60Hz server for Đảo Đèn Lồng (Nights 1-3)."""
 
 from __future__ import annotations
 
@@ -50,6 +50,10 @@ class EdgeTracker:
         elif not pressed and self.held:
             self.released_since_tick = True
         self.held = pressed
+
+    def queue_pulse(self) -> None:
+        self.pending_presses = min(self.pending_presses + 1, 3)
+        self.released_since_tick = True
 
     def next_sim_value(self, sim_prev: bool) -> bool:
         if not sim_prev:
@@ -109,28 +113,47 @@ async def _ws_read_frame(reader: asyncio.StreamReader) -> tuple[int, bytes] | No
 
 
 class ClientSession:
-    """Manages one player WebSocket session stepping GameSim at 60Hz."""
+    """Manages one player WebSocket session stepping GameSim across Nights 1-3 at 60Hz."""
 
     def __init__(self, initial_seed: int, contract: dict) -> None:
         self.seed = int(initial_seed)
         self.contract = contract
-        self.sim = GameSim(seed=self.seed, night=1, contract=self.contract)
-        self.paused = False
+        self.night = 1
+        self.started = False
+        self.campaign_score = 0
+        self._credited_this_night = False
+        self.sim = GameSim(seed=self.seed, night=self.night, contract=self.contract)
         self.move_x = 0.0
         self.move_z = 0.0
         self.cam_yaw_deg = 0.0
         self.jump_edge = EdgeTracker()
         self.interact_edge = EdgeTracker()
         self.pulse_edge = EdgeTracker()
+        self.dash_edge = EdgeTracker()
+        self.pause_edge = EdgeTracker()
 
-    def reset(self, new_seed: int | None = None) -> None:
+    def start_night(
+        self,
+        night: int = 1,
+        new_seed: int | None = None,
+        reset_campaign: bool = False,
+        started: bool = True,
+    ) -> None:
+        if reset_campaign:
+            self.campaign_score = 0
         if new_seed is not None:
             self.seed = int(new_seed)
-        self.sim = GameSim(seed=self.seed, night=1, contract=self.contract)
-        self.paused = False
+        self.night = int(night) if int(night) in (1, 2, 3) else 1
+        self.started = started
+        self._credited_this_night = False
+        self.sim = GameSim(seed=self.seed, night=self.night, contract=self.contract)
+        self.move_x = 0.0
+        self.move_z = 0.0
         self.jump_edge.reset()
         self.interact_edge.reset()
         self.pulse_edge.reset()
+        self.dash_edge.reset()
+        self.pause_edge.reset()
 
     def step_tick(self) -> list[dict]:
         inp = InputState(
@@ -140,8 +163,20 @@ class ClientSession:
             jump=self.jump_edge.next_sim_value(self.sim._prev_jump),
             interact=self.interact_edge.next_sim_value(self.sim._prev_interact),
             pulse=self.pulse_edge.next_sim_value(self.sim._prev_pulse),
+            dash=self.dash_edge.next_sim_value(self.sim._prev_dash),
+            pause=self.pause_edge.next_sim_value(self.sim._prev_pause),
         )
-        return self.sim.step(inp)
+        events = self.sim.step(inp)
+        if self.sim.state == "won" and not self._credited_this_night:
+            self._credited_this_night = True
+            self.campaign_score += self.sim.score
+        return events
+
+    def frame_payload(self, events: list[dict]) -> dict:
+        st = self.sim.ui_state()
+        st["campaign_score"] = self.campaign_score
+        st["session_started"] = self.started
+        return {"type": "frame", "state": st, "events": events}
 
 
 async def _send_ws_json(writer: asyncio.StreamWriter, lock: asyncio.Lock, obj: dict) -> None:
@@ -180,9 +215,7 @@ async def _handle_websocket(
     write_lock = asyncio.Lock()
     closed = asyncio.Event()
 
-    await _send_ws_json(
-        writer, write_lock, {"type": "frame", "state": session.sim.ui_state(), "events": []}
-    )
+    await _send_ws_json(writer, write_lock, session.frame_payload([]))
 
     async def reader_loop() -> None:
         try:
@@ -220,16 +253,31 @@ async def _handle_websocket(
                     session.jump_edge.update_from_client(bool(msg.get("jump", False)))
                     session.interact_edge.update_from_client(bool(msg.get("interact", False)))
                     session.pulse_edge.update_from_client(bool(msg.get("pulse", False)))
+                    session.dash_edge.update_from_client(bool(msg.get("dash", False)))
+                    session.pause_edge.update_from_client(bool(msg.get("pause", False)))
+                elif mtype == "start_night":
+                    night = msg.get("night", 1)
+                    new_seed = msg.get("seed")
+                    reset_c = bool(msg.get("reset_campaign", False))
+                    started = bool(msg.get("started", True))
+                    session.start_night(
+                        night=int(night),
+                        new_seed=int(new_seed) if isinstance(new_seed, int) else None,
+                        reset_campaign=reset_c,
+                        started=started,
+                    )
+                    await _send_ws_json(writer, write_lock, session.frame_payload([]))
                 elif mtype == "restart":
                     new_seed = msg.get("seed")
-                    session.reset(int(new_seed) if isinstance(new_seed, int) else None)
-                    await _send_ws_json(
-                        writer,
-                        write_lock,
-                        {"type": "frame", "state": session.sim.ui_state(), "events": []},
+                    session.start_night(
+                        night=session.night,
+                        new_seed=int(new_seed) if isinstance(new_seed, int) else None,
+                        reset_campaign=False,
+                        started=True,
                     )
-                elif mtype == "pause":
-                    session.paused = bool(msg.get("paused", False))
+                    await _send_ws_json(writer, write_lock, session.frame_payload([]))
+                elif mtype == "toggle_pause":
+                    session.pause_edge.queue_pulse()
         except (ConnectionError, ValueError):
             pass
         finally:
@@ -248,13 +296,9 @@ async def _handle_websocket(
                 if loop.time() - next_tick > 0.25:
                     next_tick = loop.time() + dt
 
-                if not session.paused and session.sim.state == "playing":
+                if session.started and session.sim.state in ("playing", "paused"):
                     events = session.step_tick()
-                    await _send_ws_json(
-                        writer,
-                        write_lock,
-                        {"type": "frame", "state": session.sim.ui_state(), "events": events},
-                    )
+                    await _send_ws_json(writer, write_lock, session.frame_payload(events))
         except ConnectionError:
             pass
         finally:
