@@ -307,8 +307,8 @@ function createTier1HalfAnnulusMesh(grassMat, sandMat) {
   mesh.castShadow = true;
   worldGroup.add(mesh);
 
-  // Sand border hint on Tier 1 top
-  const rimGeo = new THREE.RingGeometry(23.5, 24.0, 36, 1, 0, Math.PI);
+  // Sand border hint on Tier 1 top (z > 0 -> theta in [PI, 2*PI] before rotateX(-PI/2))
+  const rimGeo = new THREE.RingGeometry(23.5, 24.0, 36, 1, Math.PI, Math.PI);
   rimGeo.rotateX(-Math.PI / 2);
   const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ color: PALETTE.sand, side: THREE.DoubleSide }));
   rim.position.y = 3.02;
@@ -1288,9 +1288,11 @@ function updateOffscreenArrow(st) {
   const len = Math.max(0.001, Math.hypot(sx, sy));
   const nx = sx / len;
   const ny = sy / len;
-  const edgeScale = 0.84 / Math.max(Math.abs(nx), Math.abs(ny));
-  const cx = (nx * edgeScale * 0.5 + 0.5) * window.innerWidth;
-  const cy = (-ny * edgeScale * 0.5 + 0.5) * window.innerHeight;
+  const edgeScale = 0.78 / Math.max(Math.abs(nx), Math.abs(ny));
+  const rawCx = (nx * edgeScale * 0.5 + 0.5) * window.innerWidth;
+  const rawCy = (-ny * edgeScale * 0.5 + 0.5) * window.innerHeight;
+  const cx = Math.max(220, Math.min(window.innerWidth - 250, rawCx));
+  const cy = Math.max(125, Math.min(window.innerHeight - 155, rawCy));
   elArrow.style.left = `${cx}px`;
   elArrow.style.top = `${cy}px`;
   const deg = (Math.atan2(nx, ny) * 180) / Math.PI;
@@ -1300,8 +1302,10 @@ function updateOffscreenArrow(st) {
 }
 
 // ---------- FPS Perf Tracking & Render Loop ----------
+const elHudFps = document.getElementById('hud-fps');
 const perfSamples = [];
 window.__gamePerf = { fps: 60, avgFps: 60, samples: 0 };
+let fpsUiTick = 0;
 
 let lastFrameTime = performance.now();
 function animate(now) {
@@ -1321,6 +1325,10 @@ function animate(now) {
       avgFps: Number(avg.toFixed(1)),
       samples: perfSamples.length,
     };
+    fpsUiTick++;
+    if (elHudFps && fpsUiTick % 15 === 0) {
+      elHudFps.textContent = `FPS: ${Math.round(instFps)} (avg ${avg.toFixed(1)})`;
+    }
   }
 
   if (activeScreen === 'play') {
