@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.module.min.js';
 
-// ---------- Standard Palette (Ticket-02) ----------
+// ---------- Standard Palette (Ticket-02 / Ticket-03) ----------
 const PALETTE = {
   sky: 0x0e1430,
   fog: 0x1b2350,
@@ -15,11 +15,15 @@ const PALETTE = {
   moteHalo: 0xffe58a,
   shadeBody: 0x120a1a,
   shadeAura: 0x7a3cff,
+  shadeAuraCB: 0x00b3ff,
   shadeStun: 0x3a3450,
   mayCloak: 0xe8e2d0,
   mayCrimson: 0xc8102e,
   gold: 0xf2c14e,
   drifter: 0x8fa3b8,
+  danger: 0xff5a5f,
+  dangerCB: 0xffffff,
+  fuelHealthy: 0x5ee38c,
 };
 
 // ---------- Settings Persistence ----------
@@ -32,10 +36,11 @@ function loadSettings() {
       return {
         volume: typeof p.volume === 'number' ? Math.max(0, Math.min(100, p.volume)) : 70,
         sensitivity: typeof p.sensitivity === 'number' ? Math.max(0.2, Math.min(2.5, p.sensitivity)) : 1.0,
+        colorblind: Boolean(p.colorblind),
       };
     }
   } catch (_) {}
-  return { volume: 70, sensitivity: 1.0 };
+  return { volume: 70, sensitivity: 1.0, colorblind: false };
 }
 function saveSettings(cfg) {
   try {
@@ -43,6 +48,28 @@ function saveSettings(cfg) {
   } catch (_) {}
 }
 const settings = loadSettings();
+function getShadeAuraHex() {
+  return settings.colorblind ? PALETTE.shadeAuraCB : PALETTE.shadeAura;
+}
+function getDangerHex() {
+  return settings.colorblind ? PALETTE.dangerCB : PALETTE.danger;
+}
+function applyColorblindSetting() {
+  document.body.classList.toggle('colorblind', Boolean(settings.colorblind));
+  const auraHex = getShadeAuraHex();
+  for (const vis of shadeObjects.values()) {
+    vis.eyeMat.color.setHex(auraHex);
+    if (vis.state !== 'stunned') {
+      vis.bodyMat.emissive.setHex(auraHex);
+      vis.drainRingMat.color.setHex(auraHex);
+    }
+  }
+  for (const vis of lanternObjects.values()) {
+    if (vis.lit && vis.lowFuel) {
+      vis.fuelFillMat.color.setHex(getDangerHex());
+    }
+  }
+}
 
 // ---------- Procedural Web Audio Engine (Night Ambience + All SFX) ----------
 class SoundFX {
@@ -122,6 +149,9 @@ class SoundFX {
   }
   lanternLit() {
     [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 0.42, 'sine', 0.09, i * 0.06));
+  }
+  lanternOut() {
+    [392.0, 293.66, 196.0].forEach((f, i) => this.tone(f, 0.32, 'triangle', 0.08, i * 0.07));
   }
   pulse() {
     this.tone(330, 0.24, 'triangle', 0.1, 0);
@@ -467,7 +497,7 @@ const haloGroup = new THREE.Group();
 haloGroup.position.y = 1.88;
 playerGroup.add(haloGroup);
 const haloOrbs = [];
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < 20; i++) {
   const orb = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 8), new THREE.MeshBasicMaterial({ color: PALETTE.moteCore }));
   orb.visible = false;
   haloGroup.add(orb);
@@ -539,9 +569,23 @@ function createLanternVisual(lData, lanternCost, safeRadius) {
     roughness: 0.4,
   });
   const housing = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 14), housingMat);
-  housing.scale.y = 1.25;
+  housing.scale.set(1.06, 1.0, 1.06);
   housing.position.y = 3.2;
   group.add(housing);
+
+  // Non-color distinction for unlit/collapsed lanterns: jagged tear strips on paper lantern
+  const tearGroup = new THREE.Group();
+  tearGroup.position.y = 3.2;
+  const tearMat = new THREE.MeshBasicMaterial({ color: 0x0e1430, side: THREE.DoubleSide });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.35;
+    const flap = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.56), tearMat);
+    flap.position.set(Math.cos(a) * 0.63, (i % 2 === 0 ? 0.06 : -0.1), Math.sin(a) * 0.63);
+    flap.rotation.y = Math.atan2(Math.cos(a), Math.sin(a));
+    flap.rotation.z = i % 2 === 0 ? 0.28 : -0.32;
+    tearGroup.add(flap);
+  }
+  group.add(tearGroup);
 
   const cap = new THREE.Mesh(
     new THREE.ConeGeometry(0.85, 0.5, 8),
@@ -549,6 +593,30 @@ function createLanternVisual(lData, lanternCost, safeRadius) {
   );
   cap.position.y = 4.0;
   group.add(cap);
+
+  // Overhead Fuel Bar (visible when lit, billboards toward camera in animate)
+  const fuelGroup = new THREE.Group();
+  fuelGroup.position.y = 4.95;
+  fuelGroup.visible = false;
+  const fuelFrame = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.66, 0.26),
+    new THREE.MeshBasicMaterial({ color: 0x0e1430, side: THREE.DoubleSide })
+  );
+  const fuelBack = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.54, 0.16),
+    new THREE.MeshBasicMaterial({ color: 0x2d354f, side: THREE.DoubleSide })
+  );
+  fuelBack.position.z = 0.01;
+  const fuelFillMat = new THREE.MeshBasicMaterial({
+    color: PALETTE.fuelHealthy,
+    transparent: true,
+    opacity: 1.0,
+    side: THREE.DoubleSide,
+  });
+  const fuelFill = new THREE.Mesh(new THREE.PlaneGeometry(1.54, 0.16), fuelFillMat);
+  fuelFill.position.z = 0.02;
+  fuelGroup.add(fuelFrame, fuelBack, fuelFill);
+  group.add(fuelGroup);
 
   const light = new THREE.PointLight(PALETTE.lanternLit, 0, 26, 1.5);
   light.position.y = 3.2;
@@ -565,7 +633,7 @@ function createLanternVisual(lData, lanternCost, safeRadius) {
   safeRing.position.y = 0.08;
   group.add(safeRing);
 
-  // 10-pip ring (matching lantern_cost=10)
+  // 10-pip ring (matching max unlit lantern_cost=10; 5 active when relighting)
   const pips = [];
   for (let i = 0; i < lanternCost; i++) {
     const pipMat = new THREE.MeshBasicMaterial({ color: PALETTE.lanternUnlit });
@@ -577,7 +645,21 @@ function createLanternVisual(lData, lanternCost, safeRadius) {
   }
 
   scene.add(group);
-  return { group, housingMat, light, safeRingMat, pips };
+  return {
+    group,
+    housing,
+    housingMat,
+    tearGroup,
+    fuelGroup,
+    fuelFill,
+    fuelFillMat,
+    light,
+    safeRingMat,
+    pips,
+    lit: false,
+    fuel: 0,
+    lowFuel: false,
+  };
 }
 
 function createMoteVisual(mData) {
@@ -605,9 +687,10 @@ function createShadeVisual(sData) {
   const group = new THREE.Group();
   group.position.set(sData.pos[0], sData.pos[1], sData.pos[2]);
 
+  const auraHex = getShadeAuraHex();
   const bodyMat = new THREE.MeshStandardMaterial({
     color: PALETTE.shadeBody,
-    emissive: PALETTE.shadeAura,
+    emissive: auraHex,
     emissiveIntensity: 0.9,
     roughness: 0.5,
     transparent: true,
@@ -619,7 +702,7 @@ function createShadeVisual(sData) {
   group.add(body);
 
   const eyeGeo = new THREE.SphereGeometry(0.09, 8, 8);
-  const eyeMat = new THREE.MeshBasicMaterial({ color: PALETTE.shadeAura });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: auraHex });
   const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
   eyeL.position.set(-0.2, 0.25, 0.52);
   const eyeR = eyeL.clone();
@@ -635,8 +718,29 @@ function createShadeVisual(sData) {
   stunRing.visible = false;
   group.add(stunRing);
 
+  const drainRingMat = new THREE.MeshBasicMaterial({
+    color: auraHex,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.85,
+  });
+  const drainRing = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 24), drainRingMat);
+  drainRing.rotation.x = -Math.PI / 2;
+  drainRing.position.y = -0.82;
+  drainRing.visible = false;
+  group.add(drainRing);
+
   scene.add(group);
-  return { group, bodyMat, stunRing, phase: Math.random() * Math.PI * 2 };
+  return {
+    group,
+    bodyMat,
+    eyeMat,
+    stunRing,
+    drainRing,
+    drainRingMat,
+    state: sData.state || 'wander',
+    phase: Math.random() * Math.PI * 2,
+  };
 }
 
 function createDrifterVisual(dData) {
@@ -699,6 +803,7 @@ const elCharmPill = document.getElementById('hud-charm-pill');
 const elCharmSec = document.getElementById('hud-charm-sec');
 const elWindPill = document.getElementById('hud-wind-pill');
 const elTimer = document.getElementById('hud-timer');
+const elFuelAlert = document.getElementById('hud-fuel-alert');
 const elLanterns = document.getElementById('hud-lanterns');
 const elScore = document.getElementById('hud-score');
 const elCampaignScore = document.getElementById('hud-campaign-score');
@@ -712,11 +817,11 @@ const elArrow = document.getElementById('offscreen-arrow');
 const elArrowTri = elArrow.querySelector('.arrow-triangle');
 const elArrowLabel = document.getElementById('offscreen-label');
 
-// Build 10 firefly slots
+// Build up to 20 progressive carry-capacity firefly slots (10..20)
 const moteSlotEls = [];
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < 20; i++) {
   const s = document.createElement('div');
-  s.className = 'mote-slot';
+  s.className = 'mote-slot' + (i >= 10 ? ' hidden' : '');
   elMoteSlots.appendChild(s);
   moteSlotEls.push(s);
 }
@@ -732,11 +837,14 @@ let settingsReturnTo = 'menu';
 let pendingNight = 1;
 let pendingResetCampaign = true;
 let lastCountdownSec = -1;
+let lastDrainToastMs = 0;
 let wasWindWarn = false;
 
 let toastTimeout = null;
-function showToast(text) {
-  elToast.textContent = text;
+function showToast(text, danger = false) {
+  const msg = danger && settings.colorblind && !text.startsWith('⚠') ? `⚠ ${text}` : text;
+  elToast.textContent = msg;
+  elToast.classList.toggle('danger-toast', Boolean(danger));
   elToast.classList.remove('hidden');
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => elToast.classList.add('hidden'), 2000);
@@ -758,20 +866,20 @@ const NIGHT_INTROS = {
   1: {
     eyebrow: 'Đêm 1 / 3',
     title: 'Đảo Bến',
-    quote: 'Ông Đăng: "Đêm đầu tiên sương đen vừa kéo về Đảo Bến. Mây hãy gom đom đóm thắp lại 5 ngọn đèn cổ."',
-    meta: '5 Đèn Lồng Lớn · Thời gian: 05:00 · Cẩn thận mép đảo 40m!',
+    quote: 'Ông Đăng: "Đêm đầu tiên sương đen kéo về Đảo Bến. Hãy thắp và giữ ít nhất 3/5 đèn sáng tới bình minh!"',
+    meta: '5 Đèn Lồng Lớn (cần ≥ 3) · Thời gian: 04:00 · Châm dầu bằng [E] trước khi tắt!',
   },
   2: {
     eyebrow: 'Đêm 2 / 3',
     title: 'Đảo Cau',
-    quote: 'Ông Đăng: "Cầu tre nối hai bờ Đảo Cau giữa biển mây. Coi chừng Gió Lạc rình rập và tận dụng Bùa Gió!"',
-    meta: '6 Đèn Lồng Lớn · Thời gian: 05:30 · Cầu tre & Bục gió · Gió Lạc & Bùa Gió',
+    quote: 'Ông Đăng: "Cầu tre nối hai bờ Đảo Cau giữa biển mây. Coi chừng Bóng Mực hút dầu và Gió Lạc!"',
+    meta: '6 Đèn Lồng Lớn (cần ≥ 4) · Thời gian: 04:30 · Cầu tre, Bục gió & Bùa Gió',
   },
   3: {
     eyebrow: 'Đêm 3 / 3',
     title: 'Đảo Chuông',
-    quote: 'Ông Đăng: "Đêm cuối trên Đảo Chuông ba tầng! Hãy giữ vững ngọn lửa qua cơn gió mạnh tới bình minh!"',
-    meta: '7 Đèn Lồng Lớn · Thời gian: 06:00 · 3 Tầng đảo, Dốc 30°/150° & Gió mạnh',
+    quote: 'Ông Đăng: "Đêm cuối trên Đảo Chuông! Giữ ít nhất 5/7 đèn sáng qua gió mạnh tới bình minh!"',
+    meta: '7 Đèn Lồng Lớn (cần ≥ 5) · Thời gian: 05:00 · 3 Tầng đảo, Dốc 30°/150° & Gió mạnh',
   },
 };
 
@@ -964,12 +1072,15 @@ document.getElementById('btn-pause-menu').addEventListener('click', () => {
 
 const inputVol = document.getElementById('input-volume');
 const inputSens = document.getElementById('input-sens');
+const optColorblind = document.getElementById('opt-colorblind');
 const valVol = document.getElementById('val-volume');
 const valSens = document.getElementById('val-sens');
 inputVol.value = String(settings.volume);
 inputSens.value = String(settings.sensitivity);
+optColorblind.checked = Boolean(settings.colorblind);
 valVol.textContent = `${settings.volume}%`;
 valSens.textContent = `${settings.sensitivity.toFixed(1)}x`;
+applyColorblindSetting();
 
 inputVol.addEventListener('input', () => {
   settings.volume = Number(inputVol.value);
@@ -980,6 +1091,11 @@ inputVol.addEventListener('input', () => {
 inputSens.addEventListener('input', () => {
   settings.sensitivity = Number(inputSens.value);
   valSens.textContent = `${settings.sensitivity.toFixed(1)}x`;
+  saveSettings(settings);
+});
+optColorblind.addEventListener('change', () => {
+  settings.colorblind = Boolean(optColorblind.checked);
+  applyColorblindSetting();
   saveSettings(settings);
 });
 
@@ -1040,9 +1156,31 @@ function handleEvents(events, st) {
       if (lan) spawnBurst(lan.pos[0], lan.pos[1] + 2.2, lan.pos[2], PALETTE.lanternLit, 14);
     } else if (ev.name === 'lantern_lit') {
       sfx.lanternLit();
-      showToast(`🏮 ${ev.data.lantern_id} đã bừng sáng!`);
+      showToast(
+        ev.data.relight
+          ? `🔥 ${ev.data.lantern_id} đã được thắp lại!`
+          : `🏮 ${ev.data.lantern_id} đã bừng sáng!`
+      );
       const lan = st.lanterns.find((l) => l.id === ev.data.lantern_id);
       if (lan) spawnBurst(lan.pos[0], lan.pos[1] + 3.2, lan.pos[2], PALETTE.lanternCore, 24);
+    } else if (ev.name === 'refuel') {
+      sfx.deposit();
+      showToast(`⛽ Châm +${ev.data.amount} đom đóm vào ${ev.data.lantern_id} (dầu ${ev.data.fuel.toFixed(0)}%)`);
+      const lan = st.lanterns.find((l) => l.id === ev.data.lantern_id);
+      if (lan) spawnBurst(lan.pos[0], lan.pos[1] + 2.8, lan.pos[2], PALETTE.lanternLit, 16);
+    } else if (ev.name === 'lantern_out') {
+      sfx.lanternOut();
+      showToast(`💨 ${ev.data.lantern_id} đã cạn dầu và tắt!`, true);
+      const lan = st.lanterns.find((l) => l.id === ev.data.lantern_id);
+      if (lan) spawnBurst(lan.pos[0], lan.pos[1] + 3.0, lan.pos[2], getShadeAuraHex(), 18);
+    } else if (ev.name === 'fuel_drain') {
+      const nowMs = performance.now();
+      if (nowMs - lastDrainToastMs > 2500) {
+        lastDrainToastMs = nowMs;
+        showToast(`${ev.data.shade_id} đang hút dầu ${ev.data.lantern_id}!`, true);
+      }
+      const lan = st.lanterns.find((l) => l.id === ev.data.lantern_id);
+      if (lan) spawnBurst(lan.pos[0], lan.pos[1] + 2.4, lan.pos[2], getShadeAuraHex(), 8);
     } else if (ev.name === 'pulse') {
       sfx.pulse();
       pulseFxTime = 0;
@@ -1052,7 +1190,7 @@ function handleEvents(events, st) {
       showToast(cnt > 0 ? `✨ Tỏa Sáng làm choáng ${cnt} Bóng Mực!` : '✨ Tỏa Sáng!');
     } else if (ev.name === 'drifter_steal') {
       sfx.playerHit();
-      showToast(`💨 Gió Lạc ${ev.data.drifter_id} cướp ${ev.data.amount} đom đóm!`);
+      showToast(`💨 Gió Lạc ${ev.data.drifter_id} cướp ${ev.data.amount} đom đóm!`, true);
     } else if (ev.name === 'drifter_drop') {
       sfx.motePicked(4);
       showToast(`✨ Gió Lạc ${ev.data.drifter_id} làm rơi ${ev.data.amount} đom đóm!`);
@@ -1061,9 +1199,10 @@ function handleEvents(events, st) {
       showToast(
         ev.data.by === 'fall'
           ? `🌊 Rơi khỏi đảo! Mất 1 Ngọn Lửa & ${ev.data.lost} đom đóm`
-          : `💥 Bị Bóng Mực chạm! Rơi ${ev.data.dropped} đom đóm`
+          : `💥 Bị Bóng Mực chạm! Rơi ${ev.data.dropped} đom đóm`,
+        true
       );
-      spawnBurst(st.player.pos[0], st.player.pos[1] + 1.0, st.player.pos[2], PALETTE.shadeAura, 14);
+      spawnBurst(st.player.pos[0], st.player.pos[1] + 1.0, st.player.pos[2], getShadeAuraHex(), 14);
     } else if (ev.name === 'shade_spawned') {
       sfx.shadeSpawned();
     } else if (ev.name === 'paused') {
@@ -1093,6 +1232,11 @@ function syncVisualsFromState(st) {
   }
 
   // Lanterns & Ambient Light Formula: 0.15 + 0.55 * (lit / total)
+  const lowThresh = tuning.low_fuel_threshold ?? 30;
+  const fuelMax = tuning.fuel_max ?? 100;
+  const relightCost = tuning.relight_cost ?? 5;
+  let anyLowFuel = false;
+
   for (const lData of st.lanterns) {
     let vis = lanternObjects.get(lData.id);
     if (!vis) {
@@ -1100,23 +1244,52 @@ function syncVisualsFromState(st) {
       lanternObjects.set(lData.id, vis);
     }
     vis.group.position.set(lData.pos[0], lData.pos[1], lData.pos[2]);
+    vis.lit = Boolean(lData.lit);
+    vis.fuel = typeof lData.fuel === 'number' ? lData.fuel : 0;
+    vis.lowFuel = vis.lit && vis.fuel < lowThresh;
+    if (vis.lowFuel) anyLowFuel = true;
+
     if (lData.lit) {
+      vis.housing.scale.set(1.0, 1.25, 1.0);
+      vis.tearGroup.visible = false;
+      vis.fuelGroup.visible = true;
+
+      const frac = Math.max(0.02, Math.min(1.0, vis.fuel / fuelMax));
+      vis.fuelFill.scale.x = frac;
+      vis.fuelFill.position.x = -0.77 * (1.0 - frac);
+      vis.fuelFillMat.color.setHex(
+        vis.lowFuel ? getDangerHex() : vis.fuel < 60 ? PALETTE.gold : PALETTE.fuelHealthy
+      );
+
       vis.housingMat.color.setHex(PALETTE.lanternCore);
       vis.housingMat.emissive.setHex(PALETTE.lanternLit);
-      vis.housingMat.emissiveIntensity = 2.4;
-      vis.light.intensity = 10.0;
-      vis.safeRingMat.opacity = 0.36;
+      if (!vis.lowFuel) {
+        vis.housingMat.emissiveIntensity = 2.4;
+        vis.light.intensity = 10.0;
+        vis.fuelFillMat.opacity = 1.0;
+      }
+      vis.safeRingMat.opacity = vis.lowFuel ? 0.0 : 0.36;
+      vis.pips.forEach((pip) => {
+        pip.visible = false;
+      });
     } else {
-      const ratio = lData.deposited / cost;
+      // Unlit non-color cues: deflated height -20% (1.0 vs 1.25) and visible paper tears
+      vis.housing.scale.set(1.06, 1.0, 1.06);
+      vis.tearGroup.visible = true;
+      vis.fuelGroup.visible = false;
+
+      const reqCost = lData.ever_lit ? relightCost : cost;
+      const ratio = lData.deposited / Math.max(1, reqCost);
       vis.housingMat.color.setHex(PALETTE.lanternUnlit);
       vis.housingMat.emissive.setHex(ratio > 0 ? PALETTE.lanternLit : PALETTE.lanternUnlit);
       vis.housingMat.emissiveIntensity = 0.25 + ratio * 1.1;
       vis.light.intensity = ratio * 2.5;
       vis.safeRingMat.opacity = 0.0;
+      vis.pips.forEach((pip, idx) => {
+        pip.visible = idx < reqCost;
+        pip.material.color.setHex(idx < lData.deposited ? PALETTE.gold : PALETTE.lanternUnlit);
+      });
     }
-    vis.pips.forEach((pip, idx) => {
-      pip.material.color.setHex(idx < lData.deposited ? PALETTE.gold : PALETTE.lanternUnlit);
-    });
   }
 
   const litFrac = st.lit_count / Math.max(1, st.lantern_total);
@@ -1142,8 +1315,9 @@ function syncVisualsFromState(st) {
     }
   }
 
-  // Shades (spawning | wander | chase | recoil | stunned)
+  // Shades (spawning | wander | chase | drain | recoil | stunned)
   const activeShades = new Set();
+  const auraHex = getShadeAuraHex();
   for (const sData of st.shades || []) {
     activeShades.add(sData.id);
     let vis = shadeObjects.get(sData.id);
@@ -1151,19 +1325,23 @@ function syncVisualsFromState(st) {
       vis = createShadeVisual(sData);
       shadeObjects.set(sData.id, vis);
     }
+    vis.state = sData.state;
     vis.group.position.set(sData.pos[0], sData.pos[1], sData.pos[2]);
     vis.stunRing.visible = sData.state === 'stunned';
+    vis.drainRing.visible = sData.state === 'drain';
+    vis.eyeMat.color.setHex(sData.state === 'stunned' ? PALETTE.shadeStun : auraHex);
+    vis.drainRingMat.color.setHex(auraHex);
     if (sData.state === 'stunned') {
       vis.bodyMat.color.setHex(PALETTE.shadeStun);
       vis.bodyMat.emissive.setHex(PALETTE.shadeStun);
       vis.bodyMat.opacity = 0.9;
     } else if (sData.state === 'spawning') {
       vis.bodyMat.color.setHex(PALETTE.shadeBody);
-      vis.bodyMat.emissive.setHex(PALETTE.shadeAura);
+      vis.bodyMat.emissive.setHex(auraHex);
       vis.bodyMat.opacity = 0.45;
     } else {
       vis.bodyMat.color.setHex(PALETTE.shadeBody);
-      vis.bodyMat.emissive.setHex(PALETTE.shadeAura);
+      vis.bodyMat.emissive.setHex(auraHex);
       vis.bodyMat.opacity = 1.0;
     }
   }
@@ -1219,13 +1397,23 @@ function syncVisualsFromState(st) {
   }
 
   // HUD Numbers
+  const winNeed = st.win_threshold || Math.ceil((tuning.win_ratio || 0.6) * st.lantern_total);
+  const cap = st.player.capacity || tuning.carry_capacity;
   elNightBadge.textContent = `Đêm ${st.night} · ${st.island_name}`;
   elFlames.textContent = '🔥'.repeat(st.player.flames) + '🖤'.repeat(Math.max(0, tuning.flames - st.player.flames));
-  elLanterns.textContent = `🏮 ${st.lit_count} / ${st.lantern_total}`;
+  elFlames.parentElement.classList.toggle('low-flames', st.player.flames <= 1);
+  elLanterns.textContent = `🏮 ${st.lit_count} / ${st.lantern_total} (cần ≥ ${winNeed})`;
   elScore.textContent = String(st.score);
   elCampaignScore.textContent = String(st.campaign_score || 0);
-  elCarriedCount.textContent = `${st.player.carried} / ${tuning.carry_capacity}`;
-  moteSlotEls.forEach((slot, idx) => slot.classList.toggle('filled', idx < st.player.carried));
+  elCarriedCount.textContent = `${st.player.carried} / ${cap}`;
+  moteSlotEls.forEach((slot, idx) => {
+    slot.classList.toggle('hidden', idx >= cap);
+    slot.classList.toggle('filled', idx < st.player.carried);
+  });
+
+  if (elFuelAlert) {
+    elFuelAlert.classList.toggle('hidden', !anyLowFuel || st.state !== 'playing');
+  }
 
   if (st.player.charm_s > 0) {
     elCharmSec.textContent = `${st.player.charm_s.toFixed(1)}s`;
@@ -1268,43 +1456,52 @@ function syncVisualsFromState(st) {
     elPulseCd.className = 'skill-state ready';
   }
 
-  // Context prompt near unlit lantern (radius 2.0m)
-  let nearUnlit = null;
+  // Context prompt near eligible lantern (radius 2.0m: unlit, or lit & fuel < fuel_max)
+  let nearTarget = null;
+  let nearDist = Infinity;
   for (const lData of st.lanterns) {
-    if (lData.lit) continue;
+    if (lData.lit && lData.fuel >= fuelMax - 1e-6) continue;
     const d = Math.hypot(st.player.pos[0] - lData.pos[0], st.player.pos[2] - lData.pos[2]);
-    if (d <= tuning.interact_radius) {
-      nearUnlit = lData;
-      break;
+    if (d <= tuning.interact_radius && (d < nearDist || (d === nearDist && nearTarget && lData.id < nearTarget.id))) {
+      nearTarget = lData;
+      nearDist = d;
     }
   }
-  if (nearUnlit && st.state === 'playing' && activeScreen === 'play') {
-    elPrompt.textContent = `E — Nạp ánh sáng (${nearUnlit.deposited}/${cost})`;
+  if (nearTarget && st.state === 'playing' && activeScreen === 'play') {
+    if (!nearTarget.lit) {
+      const req = nearTarget.ever_lit ? relightCost : cost;
+      const act = nearTarget.ever_lit ? 'Thắp lại' : 'Thắp đèn';
+      elPrompt.textContent = `E — ${act} ${nearTarget.id} (${nearTarget.deposited}/${req})`;
+    } else {
+      const needMotes = Math.ceil((fuelMax - nearTarget.fuel) / (tuning.fuel_per_mote || 10));
+      elPrompt.textContent = `E — Châm dầu ${nearTarget.id} (cần ${needMotes} · dầu ${nearTarget.fuel.toFixed(0)}%)`;
+    }
     elPrompt.classList.remove('hidden');
   } else {
     elPrompt.classList.add('hidden');
   }
 
-  // Game Over / Next Night / Dawn Screen
+  // Game Over / Dawn Screen
   if ((st.state === 'won' || st.state === 'lost') && activeScreen === 'play') {
     setScreen('gameover');
     const btnNext = document.getElementById('btn-next-night');
     const isFinalDawn = st.state === 'won' && st.night === 3;
-    document.getElementById('modal-eyebrow').textContent = isFinalDawn
-      ? 'Bình Minh Đã Lên'
-      : `Đêm ${st.night} · ${st.island_name}`;
+    document.getElementById('modal-eyebrow').textContent =
+      st.state === 'won' ? 'Bình Minh Đã Lên' : `Đêm ${st.night} · ${st.island_name}`;
     document.getElementById('modal-title').textContent = isFinalDawn
-      ? 'Chiến Thắng Trọn Vẹn — Bình Minh!'
+      ? 'Chiến Thắng — Sống Sót Tới Bình Minh!'
       : st.state === 'won'
-        ? `Đêm ${st.night} Hoàn Thành!`
-        : 'Đèn Chưa Kịp Sáng';
-    document.getElementById('modal-subtitle').textContent = isFinalDawn
-      ? 'Ánh đèn đã rực sáng cả ba hòn đảo giữa biển mây!'
-      : st.state === 'won'
-        ? `${st.island_name} đã bừng sáng. Chuẩn bị tiến tới hòn đảo kế tiếp.`
+        ? `Vượt Qua Đêm ${st.night}!`
         : st.game_over_reason === 'dawn'
-          ? 'Đã hết thời gian trước bình minh.'
-          : 'Mây đã mất hết Ngọn Lửa.';
+          ? 'Đảo Chìm Trong Sương Đen'
+          : 'Ngọn Lửa Đã Tắt';
+    document.getElementById('modal-subtitle').textContent = isFinalDawn
+      ? `Giữ sáng ${st.lit_count}/${st.lantern_total} đèn qua đêm cuối tại ${st.island_name}!`
+      : st.state === 'won'
+        ? `Giữ sáng ${st.lit_count}/${st.lantern_total} đèn (≥ ${winNeed}) tới bình minh. Chuẩn bị qua hòn đảo kế tiếp.`
+        : st.game_over_reason === 'dawn'
+          ? `Trời đã sáng nhưng chỉ còn ${st.lit_count}/${st.lantern_total} đèn sáng (cần ≥ ${winNeed}).`
+          : 'Mây đã mất hết Ngọn Lửa giữa đêm tối.';
     document.getElementById('modal-score').textContent = String(st.score);
     document.getElementById('modal-campaign-score').textContent = String(st.campaign_score || 0);
     document.getElementById('modal-lanterns').textContent = `${st.lit_count} / ${st.lantern_total}`;
@@ -1313,17 +1510,20 @@ function syncVisualsFromState(st) {
   }
 }
 
-// ---------- Off-Screen Nearest Unlit Lantern Arrow ----------
+// ---------- Off-Screen Nearest Unlit / Weak Lantern Arrow ----------
 const projVec = new THREE.Vector3();
 function updateOffscreenArrow(st) {
   if (!st || st.state !== 'playing' || activeScreen !== 'play') {
     elArrow.classList.add('hidden');
     return;
   }
+  const lowThresh = st.tuning.low_fuel_threshold ?? 30;
   let nearest = null;
   let bestD = Infinity;
+  // Prioritize weak lit lanterns (< 30) or unlit lanterns
   for (const lData of st.lanterns) {
-    if (lData.lit) continue;
+    const needsAttention = !lData.lit || lData.fuel < lowThresh;
+    if (!needsAttention) continue;
     const d = Math.hypot(lData.pos[0] - st.player.pos[0], lData.pos[2] - st.player.pos[2]);
     if (d < bestD) {
       bestD = d;
@@ -1358,7 +1558,8 @@ function updateOffscreenArrow(st) {
   elArrow.style.top = `${cy}px`;
   const deg = (Math.atan2(nx, ny) * 180) / Math.PI;
   elArrowTri.style.transform = `rotate(${deg}deg)`;
-  elArrowLabel.textContent = `${nearest.id} (${Math.round(bestD)}m)`;
+  const tag = nearest.lit ? `⚠${nearest.id}` : nearest.id;
+  elArrowLabel.textContent = `${tag} (${Math.round(bestD)}m)`;
   elArrow.classList.remove('hidden');
 }
 
@@ -1465,9 +1666,25 @@ function animate(now) {
   for (const vis of moteObjects.values()) {
     vis.group.position.y = vis.baseY + (vis.isDropped ? 0.55 : 0.72) + Math.sin(t * 3.1 + vis.phase) * 0.2;
   }
+  const blinkOn = Math.sin(t * Math.PI * 2) >= 0; // 1 Hz blink for low fuel (< 30)
+  for (const vis of lanternObjects.values()) {
+    if (vis.fuelGroup.visible) {
+      vis.fuelGroup.quaternion.copy(camera.quaternion);
+    }
+    if (vis.lit && vis.lowFuel) {
+      vis.housingMat.emissiveIntensity = blinkOn ? 2.4 : 0.45;
+      vis.light.intensity = blinkOn ? 9.5 : 2.2;
+      vis.fuelFillMat.opacity = blinkOn ? 1.0 : 0.25;
+    }
+  }
   for (const vis of shadeObjects.values()) {
     vis.group.rotation.y = t * 1.4 + vis.phase;
     vis.stunRing.rotation.z = t * 5.0;
+    if (vis.drainRing.visible) {
+      const pulse = 1.0 + 0.22 * Math.sin(t * 6.0);
+      vis.drainRing.scale.set(pulse, pulse, 1);
+      vis.drainRingMat.opacity = 0.5 + 0.4 * Math.sin(t * 6.0);
+    }
   }
   for (const vis of drifterObjects.values()) {
     vis.ribbon.rotation.z = Math.sin(t * 4 + vis.phase) * 0.25;

@@ -10,6 +10,50 @@
   --crimson: #C8102E;
 }
 
+body.colorblind {
+  --danger: #FFFFFF;
+}
+
+body.colorblind .timer-value.timer-danger::before,
+body.colorblind .skill-state.cooldown::before,
+body.colorblind .flames-row.low-flames #hud-flames::before {
+  content: '⚠ ';
+}
+
+.flames-row.low-flames #hud-flames {
+  color: var(--danger);
+}
+
+body.colorblind .fuel-alert::before {
+  content: '⚠ ';
+}
+
+.fuel-alert {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--danger);
+  letter-spacing: 0.2px;
+  animation: pulseBlink 0.5s infinite alternate;
+}
+
+.setting-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 2px;
+}
+
+.setting-check-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
 * {
   box-sizing: border-box;
   user-select: none;
@@ -190,6 +234,11 @@ html, body {
   border-radius: 999px;
   font-size: 14px;
   font-weight: 600;
+}
+
+.event-toast.danger-toast {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .context-prompt {
