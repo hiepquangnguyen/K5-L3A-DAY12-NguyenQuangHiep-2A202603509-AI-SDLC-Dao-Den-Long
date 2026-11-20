@@ -189,9 +189,13 @@ class GameSim:
 
         if "motes" in sc:
             for item in sc["motes"]:
-                mid = item.get("id") or f"M{self._next_mote_num}"
+                if isinstance(item, list):
+                    mid = f"M{self._next_mote_num}"
+                    pos = item
+                else:
+                    mid = item.get("id") or f"M{self._next_mote_num}"
+                    pos = item["pos"]
                 self._next_mote_num = max(self._next_mote_num + 1, _numeric_suffix(mid, "M") + 1)
-                pos = item["pos"]
                 self.motes.append(
                     MoteState(id=mid, x=float(pos[0]), y=float(pos[1]), z=float(pos[2]))
                 )
