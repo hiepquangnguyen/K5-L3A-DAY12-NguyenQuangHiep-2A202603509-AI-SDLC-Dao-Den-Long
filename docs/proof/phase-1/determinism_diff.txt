@@ -1,0 +1,6 @@
+Command: python -m src.headless --seed 12345 --night 1 --ticks 1500 --snapshot-every 10
+Run 1 bytes : 77003
+Run 1 sha256: 6dffd690921f240135f0e105210ab7fe6eaecbda133361028f99996961df18b7
+Run 2 bytes : 77003
+Run 2 sha256: 6dffd690921f240135f0e105210ab7fe6eaecbda133361028f99996961df18b7
+Exact match : True
