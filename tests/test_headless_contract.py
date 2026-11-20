@@ -276,6 +276,14 @@ class TestHeadlessContract(unittest.TestCase):
             self.assertEqual(proc_huge.returncode, 2)
             self.assertTrue(proc_huge.stderr.strip())
 
+            max_digits_bad = Path(td) / "max_digits.json"
+            max_digits_bad.write_text('{"frames":[{"tick":' + ("9" * 5000) + "}]}", encoding="utf-8")
+            proc_digits = run_headless(
+                "--seed", "1", "--night", "1", "--inputs", str(max_digits_bad), "--ticks", "10", "--out", str(out)
+            )
+            self.assertEqual(proc_digits.returncode, 2)
+            self.assertTrue(proc_digits.stderr.strip())
+
     def test_ticks_zero_and_help_exit_zero(self) -> None:
         help_proc = run_headless("--help")
         self.assertEqual(help_proc.returncode, 0)

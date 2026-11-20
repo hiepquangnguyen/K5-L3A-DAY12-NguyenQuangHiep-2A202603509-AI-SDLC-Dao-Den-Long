@@ -102,7 +102,7 @@ class NightMap:
             t = -x * sa + z * ca
             if 23.6 <= s <= 30.0 + 1e-6 and abs(t) <= 1.5 + 1e-6:
                 ramp_h = 3.0 * min(1.0, max(0.0, (30.0 - s) / 6.0))
-                if ramp_h > best_h and ramp_h <= current_y + 1.0:
+                if ramp_h > best_h:
                     best_h = ramp_h
         return best_h
 

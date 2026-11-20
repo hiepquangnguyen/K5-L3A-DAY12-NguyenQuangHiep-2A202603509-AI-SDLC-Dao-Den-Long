@@ -1,5 +1,5 @@
 $ C:\Users\hiepq\AppData\Local\Programs\Python\Python313\python.exe -m unittest discover -s tests -v
-exit_code: 0 (elapsed: 7.88s)
+exit_code: 0 (elapsed: 10.58s)
 --- stdout ---
 
 --- stderr ---
@@ -12,6 +12,7 @@ test_shade_hit_and_no_flames_loss (test_headless_contract.TestHeadlessContract.t
 test_snapshot_v1_1_schema_fields (test_headless_contract.TestHeadlessContract.test_snapshot_v1_1_schema_fields) ... ok
 test_ticks_zero_and_help_exit_zero (test_headless_contract.TestHeadlessContract.test_ticks_zero_and_help_exit_zero) ... ok
 test_unsupported_night_returns_nonzero (test_headless_contract.TestHeadlessContract.test_unsupported_night_returns_nonzero) ... ok
+test_audit_regressions_ramp_side_idle_drifter_charm_speed_and_outcome_order (test_phase2_features.TestPhase2Features.test_audit_regressions_ramp_side_idle_drifter_charm_speed_and_outcome_order) ... ok
 test_charm_boosts_speed_removes_dash_cooldown_and_respawns (test_phase2_features.TestPhase2Features.test_charm_boosts_speed_removes_dash_cooldown_and_respawns) ... ok
 test_dash_air_altitude_hold_and_cooldown (test_phase2_features.TestPhase2Features.test_dash_air_altitude_hold_and_cooldown) ... ok
 test_drifter_steal_ignores_invuln_safe_zone_and_pulse_drops (test_phase2_features.TestPhase2Features.test_drifter_steal_ignores_invuln_safe_zone_and_pulse_drops) ... ok
@@ -32,6 +33,6 @@ test_safe_radius_blocks_active_shades_only_for_lit_lanterns (test_sim_unit.TestG
 test_scenario_setup_emits_no_events_or_score (test_sim_unit.TestGameSimUnit.test_scenario_setup_emits_no_events_or_score) ... ok
 
 ----------------------------------------------------------------------
-Ran 27 tests in 7.700s
+Ran 28 tests in 10.327s
 
 OK

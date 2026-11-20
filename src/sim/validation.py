@@ -33,7 +33,7 @@ def _load_json(path: Path, kind: str) -> object:
         raise ContractFormatError(f"Cannot read {kind} file '{path}': {exc}") from exc
     try:
         return json.loads(raw)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ContractFormatError(f"Invalid JSON in {kind} file '{path}': {exc}") from exc
 
 

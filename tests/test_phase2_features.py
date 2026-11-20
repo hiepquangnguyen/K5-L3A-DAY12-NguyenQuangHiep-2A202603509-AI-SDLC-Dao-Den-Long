@@ -407,6 +407,92 @@ class TestPhase2Features(unittest.TestCase):
             self.assertEqual(p2.returncode, 0, p2.stderr)
             self.assertEqual(out1.read_bytes(), out2.read_bytes())
 
+    def test_audit_regressions_ramp_side_idle_drifter_charm_speed_and_outcome_order(self) -> None:
+        # 1. Night 3 ramp side-wall blocks entering underneath from Tier 0 (s=26, t=1.6 -> t<1.5)
+        r_ang = math.radians(30.0)
+        ux, uz = math.cos(r_ang), math.sin(r_ang)
+        tx, tz = -math.sin(r_ang), math.cos(r_ang)
+        start_x, start_z = 26.0 * ux + 2.0 * tx, 26.0 * uz + 2.0 * tz
+        sim_ramp = GameSim(
+            seed=16,
+            night=3,
+            scenario={"player": {"pos": [start_x, 0, start_z]}, "random_motes": False, "random_shades": False, "random_drifters": False, "wind_enabled": False},
+            contract=self.contract,
+        )
+        for _ in range(30):
+            sim_ramp.step(InputState(move_x=-tx, move_z=-tz))
+        self.assertEqual(sim_ramp.player.y, 0.0)
+        # Verify player remained outside ramp side wall (|t| > 1.5)
+        t_after = -sim_ramp.player.x * math.sin(r_ang) + sim_ramp.player.z * math.cos(r_ang)
+        self.assertGreater(abs(t_after), 1.49)
+
+        # 2. Idle drifter does NOT steal when carried < 5
+        sim_idle = GameSim(
+            seed=17,
+            night=2,
+            scenario={
+                "player": {"pos": [0, 0, 0], "carried": 3},
+                "random_motes": False,
+                "random_shades": False,
+                "random_drifters": False,
+                "drifters": [{"id": "D1", "pos": [0, 1.2, 0.5], "state": "idle"}],
+            },
+            contract=self.contract,
+        )
+        ev_idle = sim_idle.step(InputState())
+        self.assertNotIn("drifter_steal", [e["name"] for e in ev_idle])
+        self.assertEqual(sim_idle.player.carried, 3)
+
+        # 3. Charm speed 7.2 m/s and 2700-tick respawn
+        sim_charm = GameSim(
+            seed=18,
+            night=2,
+            scenario={
+                "player": {"pos": [34.5, 0, 0], "carried": 0},
+                "random_motes": False,
+                "random_shades": False,
+                "random_drifters": False,
+                "charms": [{"id": "C1", "pos": [35, 0, 0], "available": True}],
+            },
+            contract=self.contract,
+        )
+        sim_charm.step(InputState())  # pick C1
+        self.assertFalse(sim_charm.charms[0].available)
+        x0 = sim_charm.player.x
+        for _ in range(60):
+            sim_charm.step(InputState(move_x=-1.0, move_z=0.0))
+        self.assertAlmostEqual(x0 - sim_charm.player.x, 7.2, places=3)
+        for _ in range(2639):
+            sim_charm.step(InputState())
+        self.assertFalse(sim_charm.charms[0].available)
+        sim_charm.step(InputState())  # tick 2701 -> 2700 ticks elapsed since pickup at tick 1
+        self.assertTrue(sim_charm.charms[0].available)
+
+        # 4. Same-tick win/loss precedence: no_flames > all_lit > dawn
+        sim_prec = GameSim(
+            seed=19,
+            night=1,
+            scenario={
+                "player": {"pos": [0, 0, 25], "carried": 10, "flames": 1},
+                "random_motes": False,
+                "random_shades": False,
+                "lanterns": [
+                    {"id": "L1", "pos": [0, 0, 25], "deposited": 0, "lit": False},
+                    {"id": "L2", "lit": True},
+                    {"id": "L3", "lit": True},
+                    {"id": "L4", "lit": True},
+                    {"id": "L5", "lit": True},
+                ],
+                "shades": [{"id": "S1", "pos": [0, 0, 31], "state": "chase"}],
+                "time_left_s": 1.0 / 60.0,
+            },
+            contract=self.contract,
+        )
+        # All lit on same tick as dawn -> won (all_lit > dawn)
+        ev_won = sim_prec.step(InputState(interact=True))
+        self.assertEqual(sim_prec.state, "won")
+        self.assertEqual(ev_won[-1]["data"], {"result": "won", "reason": "all_lit"})
+
 
 if __name__ == "__main__":
     unittest.main()

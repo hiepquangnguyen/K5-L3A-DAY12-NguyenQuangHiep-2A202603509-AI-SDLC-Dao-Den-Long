@@ -391,13 +391,22 @@ class GameSim:
                     cx, cy, cz = base.x, base.y, base.z
                 else:
                     cx, cy, cz = 0.0, 0.0, 0.0
-                avail = bool(item.get("available", True))
                 if "respawn_ticks" in item:
                     rticks = int(item["respawn_ticks"])
                 elif "respawn_s" in item:
                     rticks = round(float(item["respawn_s"]) * TICK_RATE)
                 else:
-                    rticks = 0 if avail else 2700
+                    rticks = None
+                if "available" in item:
+                    avail = bool(item["available"])
+                    if rticks is None:
+                        rticks = 0 if avail else 2700
+                else:
+                    if rticks is not None and rticks > 0:
+                        avail = False
+                    else:
+                        avail = True
+                        rticks = 0
                 new_charms.append(
                     CharmState(id=cid, x=cx, y=cy, z=cz, available=avail, respawn_ticks=rticks)
                 )
@@ -723,7 +732,11 @@ class GameSim:
                     break
 
         # Fall off island (Y < -10): ignores invuln, triggers once, loses carried & 1 flame
-        if self.player.y < -10.0 and self.respawn_ticks == 0:
+        if (
+            bool(self.tuning.get("fall_enabled", True))
+            and self.player.y < -10.0
+            and self.respawn_ticks == 0
+        ):
             self.player.flames = max(0, self.player.flames - 1)
             lost = self.player.carried
             self.player.carried = 0
@@ -876,6 +889,9 @@ class GameSim:
                     shade.x, shade.z, max(0.0, shade.y - 1.0), shade.x + nx * step_d, shade.z + nz * step_d
                 )
                 shade.x, shade.z = cx, cz
+                gh = self.night_map.surface_height(shade.x, shade.z, max(0.0, shade.y - SHADE_DEFAULT_Y))
+                if gh is not None:
+                    shade.y = gh + SHADE_DEFAULT_Y
                 shade.safe_push_ticks -= 1
 
     def _step_pulse(self, events: list[dict]) -> None:
@@ -907,6 +923,7 @@ class GameSim:
                     nx, nz = 1.0, 0.0
                 shade.state = "stunned"
                 shade.state_ticks_left = stun_ticks
+                shade.safe_push_ticks = 0
                 shade.knockback_ticks = 15
                 shade.kb_vx = nx * (push_m / 15.0)
                 shade.kb_vz = nz * (push_m / 15.0)
@@ -981,7 +998,7 @@ class GameSim:
         return nx, nz
 
     def _step_shades_movement(self) -> None:
-        shade_speed = self.night_map.shade_speed
+        shade_speed = 4.5 if self.night == 3 else float(self.tuning["shade_speed"])
         lit_lanterns = [lantern for lantern in self.lanterns if lantern.lit]
 
         for shade in self.shades:
@@ -1001,6 +1018,9 @@ class GameSim:
                         shade.z + shade.kb_vz,
                     )
                     shade.x, shade.z = rx, rz
+                    gh = self.night_map.surface_height(shade.x, shade.z, ground_ref)
+                    if gh is not None:
+                        shade.y = gh + SHADE_DEFAULT_Y
                     if hit:
                         shade.knockback_ticks = 0
                 continue
@@ -1017,6 +1037,9 @@ class GameSim:
                 shade.x, shade.z = self._clamp_shade_out_of_safe_zones(
                     shade.x, shade.z, shade.y, lit_lanterns
                 )
+                gh = self.night_map.surface_height(shade.x, shade.z, ground_ref)
+                if gh is not None:
+                    shade.y = gh + SHADE_DEFAULT_Y
                 continue
 
             # Transition between wander and chase (detect 12m, drop 18m)
@@ -1102,9 +1125,9 @@ class GameSim:
                     drifter.z += (dz / d) * ml
 
     def _step_collisions(self, events: list[dict]) -> None:
-        # 1. Drifters steal FIRST (ascending id; ignores invuln & safe_radius)
-        for drifter in sorted(self.drifters, key=lambda d: d.id):
-            if drifter.state in ("flee", "removed") or drifter.has_stolen:
+        # 1. Drifters steal FIRST (natural ascending id; ignores invuln & safe_radius)
+        for drifter in sorted(self.drifters, key=lambda d: (_numeric_suffix(d.id, "D"), d.id)):
+            if drifter.state != "chase" or drifter.has_stolen or self.player.carried <= 0:
                 continue
             if dist_xz(self.player.x, self.player.z, drifter.x, drifter.z) <= 1.2:
                 amount = min(3, self.player.carried)
@@ -1126,7 +1149,7 @@ class GameSim:
                     }
                 )
 
-        # 2. Shades hit SECOND (ascending id; max 1 flame lost per tick)
+        # 2. Shades hit SECOND (natural ascending id; max 1 flame lost per tick)
         if self.invuln_ticks > 0:
             return
 
@@ -1134,8 +1157,12 @@ class GameSim:
         drop_ratio = float(self.tuning["hit_drop_ratio"])
         invuln_ticks = round(float(self.tuning["invuln_s"]) * TICK_RATE)
 
-        for shade in sorted(self.shades, key=lambda s: s.id):
-            if shade.state in ("spawning", "stunned", "recoil") or shade.safe_push_ticks > 0:
+        for shade in sorted(self.shades, key=lambda s: (_numeric_suffix(s.id, "S"), s.id)):
+            if (
+                shade.state in ("spawning", "stunned", "recoil")
+                or shade.safe_push_ticks > 0
+                or self._is_inside_lit_safe_zone(shade.x, shade.z)
+            ):
                 continue
             ground_diff = abs(self.player.y - (shade.y - SHADE_DEFAULT_Y))
             if (
@@ -1185,7 +1212,11 @@ class GameSim:
             cx = self.player.x + math.cos(ang) * rad
             cz = self.player.z + math.sin(ang) * rad
             h = self.night_map.surface_height(cx, cz, current_y=self.player.y + 0.5)
-            if h is not None and not self.night_map.is_blocked(cx, cz, h, allow_void=False):
+            if (
+                h is not None
+                and abs(h - self.player.y) <= 1.5
+                and not self.night_map.is_blocked(cx, cz, self.player.y, allow_void=False)
+            ):
                 mx, my, mz = cx, h, cz
                 break
         mid = f"M{self._next_mote_num}"
